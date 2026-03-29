@@ -53,7 +53,7 @@ export default function ProductsPage() {
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products || data.rows || []);
-        setTotal(data.total || 0);
+        setTotal(data.pagination?.total || 0);
       }
     } catch { /* silently fail */ }
     setLoading(false);
@@ -277,7 +277,7 @@ export default function ProductsPage() {
       )}
 
       {/* Pagination */}
-      {!loading && total > 50 && (
+      {!loading && total > 20 && (
         <div style={{
           display: 'flex',
           justifyContent: 'center',
@@ -306,20 +306,20 @@ export default function ProductsPage() {
             fontFamily: "'JetBrains Mono', monospace",
             color: '#666',
           }}>
-            Page {page} of {Math.ceil(total / 50)}
+            Page {page} of {Math.ceil(total / 20)}
           </span>
           <button
-            disabled={page >= Math.ceil(total / 50)}
+            disabled={page >= Math.ceil(total / 20)}
             onClick={() => setPage(p => p + 1)}
             style={{
               background: '#111118',
-              color: page >= Math.ceil(total / 50) ? '#333' : '#00f0ff',
+              color: page >= Math.ceil(total / 20) ? '#333' : '#00f0ff',
               border: '1px solid #1a1a24',
               borderRadius: 6,
               padding: '6px 14px',
               fontSize: '0.75rem',
               fontFamily: "'JetBrains Mono', monospace",
-              cursor: page >= Math.ceil(total / 50) ? 'default' : 'pointer',
+              cursor: page >= Math.ceil(total / 20) ? 'default' : 'pointer',
             }}
           >
             NEXT

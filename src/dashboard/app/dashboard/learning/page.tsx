@@ -14,11 +14,12 @@ interface LearningData {
     deployed: boolean;
     created_at: string;
   }>;
-  labeledCount: number;
-  qloraPairs: number;
-  sourceRates: Array<{ source: string; total: number; wins: number }>;
-  featureImportance: Array<{ feature: string; importance: number }>;
-  latestReflection: string | null;
+  featureImportance: Array<{ feature: string; importance: number }> | null;
+  sourceHitRates: Array<{ source: string; total: number; wins: number }> | null;
+  strategyReflection: string | null;
+  labelDistribution: Array<{ outcome_label: string; count: number }>;
+  accuracyTrend: Array<{ date: string; accuracy: number }>;
+  samplesTrend: Array<{ date: string; samples: number }>;
 }
 
 export default function LearningPage() {
@@ -54,10 +55,11 @@ export default function LearningPage() {
   }
 
   const cycles = data?.cycles || [];
-  const sourceRates = data?.sourceRates || [];
+  const sourceRates = data?.sourceHitRates || [];
   const featureImportance = data?.featureImportance || [];
-  const labeledCount = data?.labeledCount || 0;
-  const qloraPairs = data?.qloraPairs || 0;
+  const labelDistribution = data?.labelDistribution || [];
+  const labeledCount = labelDistribution.reduce((sum, l) => sum + (l.count || 0), 0);
+  const qloraPairs = 0; // Not provided by /api/learning
 
   // Accuracy over time chart data
   const accuracyData = {
@@ -180,7 +182,7 @@ export default function LearningPage() {
       </div>
 
       {/* Strategy Reflection */}
-      {data?.latestReflection && (
+      {data?.strategyReflection && (
         <div style={{ marginBottom: 28 }}>
           <SectionLabel>Latest Strategy Reflection</SectionLabel>
           <div style={{
@@ -195,7 +197,7 @@ export default function LearningPage() {
             whiteSpace: 'pre-wrap',
             borderLeft: '3px solid #ff00aa44',
           }}>
-            {data.latestReflection}
+            {data.strategyReflection}
           </div>
         </div>
       )}

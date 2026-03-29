@@ -5,12 +5,15 @@ import NeonChart from '@/components/NeonChart';
 import DataTable from '@/components/DataTable';
 
 interface TrainingData {
-  tableCounts: Array<{ t: string; cnt: number }>;
-  labelDistribution: Array<{ outcome_label: string; cnt: number }>;
-  llmCallStats: Array<{ task_type: string; cnt: number; avg_latency: number }>;
-  qloraStats: Array<{ outcome_quality: string; cnt: number }>;
-  trainingExportCount: number;
-  recentLLMCalls: Array<{
+  llmCallsByTask: Array<{ task_type: string; total_calls: number; avg_tokens_in: number; avg_tokens_out: number; avg_latency_ms?: number }>;
+  llmCallsByModel: Array<{ model_used: string; total_calls: number }>;
+  labelDistribution: Array<{ outcome_label: string; count: number }>;
+  qloraPairs: { total_calls: number; keep_count: number; discard_count: number; flip_count: number };
+  qloraPairsByTask: Array<{ task_type: string; total: number; keep: number; discard: number; flip: number }>;
+  trainingVersions: Array<unknown>;
+  dataQuality: { total_products: number; with_outcome: number; with_score: number; with_breakdown: number };
+  signalCoverage: Array<{ signal: string; coverage: number }>;
+  recentCalls: Array<{
     task_type: string;
     model_used: string;
     tokens_in: number;
@@ -53,12 +56,37 @@ export default function TrainingPage() {
     );
   }
 
-  const tableCounts = data?.tableCounts || [];
+  const llmCallsByTask = data?.llmCallsByTask || [];
   const labelDistribution = data?.labelDistribution || [];
-  const llmCallStats = data?.llmCallStats || [];
-  const qloraStats = data?.qloraStats || [];
-  const trainingExportCount = data?.trainingExportCount || 0;
-  const recentLLMCalls = data?.recentLLMCalls || [];
+  const qloraPairs = data?.qloraPairs;
+  const dataQuality = data?.dataQuality;
+  const recentLLMCalls = data?.recentCalls || [];
+
+  // Build table counts from dataQuality for the volume grid
+  const tableCounts: Array<{ t: string; cnt: number }> = [];
+  if (dataQuality) {
+    tableCounts.push({ t: 'products', cnt: dataQuality.total_products || 0 });
+    tableCounts.push({ t: 'with_outcome', cnt: dataQuality.with_outcome || 0 });
+    tableCounts.push({ t: 'with_score', cnt: dataQuality.with_score || 0 });
+    tableCounts.push({ t: 'with_breakdown', cnt: dataQuality.with_breakdown || 0 });
+  }
+
+  // Build qlora stats from qloraPairs
+  const qloraStats: Array<{ outcome_quality: string; cnt: number }> = [];
+  if (qloraPairs) {
+    if (qloraPairs.keep_count) qloraStats.push({ outcome_quality: 'keep', cnt: qloraPairs.keep_count });
+    if (qloraPairs.flip_count) qloraStats.push({ outcome_quality: 'flip', cnt: qloraPairs.flip_count });
+    if (qloraPairs.discard_count) qloraStats.push({ outcome_quality: 'discard', cnt: qloraPairs.discard_count });
+  }
+
+  // Map llmCallsByTask to the shape the chart/table expects
+  const llmCallStats = llmCallsByTask.map(l => ({
+    task_type: l.task_type,
+    cnt: l.total_calls,
+    avg_latency: l.avg_latency_ms || 0,
+  }));
+
+  const trainingExportCount = qloraPairs?.total_calls || 0;
 
   // LLM Calls by task type chart
   const llmChartData = {
@@ -75,7 +103,7 @@ export default function TrainingPage() {
   const labelChartData = {
     labels: labelDistribution.map(l => l.outcome_label),
     datasets: [{
-      data: labelDistribution.map(l => l.cnt),
+      data: labelDistribution.map(l => l.count),
       backgroundColor: labelDistribution.map(l => labelColors[l.outcome_label] || '#666'),
       borderColor: '#111118',
     }],

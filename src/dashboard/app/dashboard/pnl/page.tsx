@@ -5,23 +5,42 @@ import MetricCard from '@/components/MetricCard';
 import NeonChart from '@/components/NeonChart';
 import DataTable from '@/components/DataTable';
 
+interface PnLAggregates {
+  total_revenue: number;
+  total_ad_spend: number;
+  total_profit: number;
+  total_orders: number;
+  products_with_revenue: number;
+  win_count: number;
+  loss_count: number;
+  breakeven_count: number;
+}
+
 interface PnLData {
-  revenue: number;
-  adSpend: number;
-  profit: number;
-  orders: number;
-  wins: number;
-  losses: number;
-  breakevens: number;
-  totalLabeled: number;
-  roas: number;
-  products: Array<{
+  perProduct: Array<{
     keyword: string;
     category: string;
     score: number;
     total_revenue: number;
     total_ad_spend: number;
     total_orders: number;
+    roas: number;
+    outcome_label: string;
+  }>;
+  aggregates: PnLAggregates;
+  roasDistribution: Array<unknown>;
+  dailyMetrics: Array<unknown>;
+  topPerformers: Array<{
+    keyword: string;
+    total_revenue: number;
+    total_ad_spend: number;
+    roas: number;
+    outcome_label: string;
+  }>;
+  worstPerformers: Array<{
+    keyword: string;
+    total_revenue: number;
+    total_ad_spend: number;
     roas: number;
     outcome_label: string;
   }>;
@@ -59,16 +78,17 @@ export default function PnLPage() {
     );
   }
 
-  const revenue = data?.revenue || 0;
-  const adSpend = data?.adSpend || 0;
-  const profit = data?.profit || (revenue - adSpend);
-  const roas = data?.roas || (adSpend > 0 ? revenue / adSpend : 0);
-  const wins = data?.wins || 0;
-  const losses = data?.losses || 0;
-  const breakevens = data?.breakevens || 0;
-  const totalLabeled = data?.totalLabeled || 0;
+  const agg = data?.aggregates;
+  const revenue = agg?.total_revenue || 0;
+  const adSpend = agg?.total_ad_spend || 0;
+  const profit = agg?.total_profit || (revenue - adSpend);
+  const roas = adSpend > 0 ? revenue / adSpend : 0;
+  const wins = agg?.win_count || 0;
+  const losses = agg?.loss_count || 0;
+  const breakevens = agg?.breakeven_count || 0;
+  const totalLabeled = wins + losses + breakevens;
   const winRate = totalLabeled > 0 ? ((wins / totalLabeled) * 100).toFixed(0) : '0';
-  const products = data?.products || [];
+  const products = data?.perProduct || [];
 
   // ROAS distribution chart
   const roasProducts = products.filter(p => p.roas != null && p.roas > 0);
@@ -86,10 +106,13 @@ export default function PnLPage() {
     }],
   };
 
-  // Top/Worst performers
-  const sorted = [...products].sort((a, b) => (b.total_revenue - b.total_ad_spend) - (a.total_revenue - a.total_ad_spend));
-  const topPerformers = sorted.slice(0, 5);
-  const worstPerformers = sorted.slice(-5).reverse();
+  // Top/Worst performers from API (fall back to client-side sort if empty)
+  const topPerformers = (data?.topPerformers && data.topPerformers.length > 0)
+    ? data.topPerformers
+    : [...products].sort((a, b) => (b.total_revenue - b.total_ad_spend) - (a.total_revenue - a.total_ad_spend)).slice(0, 5);
+  const worstPerformers = (data?.worstPerformers && data.worstPerformers.length > 0)
+    ? data.worstPerformers
+    : [...products].sort((a, b) => (a.total_revenue - a.total_ad_spend) - (b.total_revenue - b.total_ad_spend)).slice(0, 5);
 
   const tableColumns = [
     {

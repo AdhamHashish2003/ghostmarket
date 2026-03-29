@@ -13,8 +13,10 @@ const AGENTS = [
 interface AgentStatus {
   agent: string;
   last_seen: string;
-  last_event: string;
+  last_event_type: string;
   last_severity: string;
+  error_count_24h: number;
+  warning_count_24h: number;
 }
 
 interface ErrorEvent {
@@ -26,11 +28,16 @@ interface ErrorEvent {
 }
 
 interface SystemData {
-  agents: AgentStatus[];
-  recentErrors: ErrorEvent[];
-  eventCounts: Array<{ event_type: string; cnt: number }>;
-  dbSize: string;
-  eventRate: Array<{ hour: string; count: number }>;
+  agentStatus: AgentStatus[];
+  errorLog: ErrorEvent[];
+  database: { path: string; sizeBytes: number };
+  events: {
+    total: Array<{ event_type: string; count: number }>;
+    severity: Array<{ severity: string; count: number }>;
+    unresolved: number;
+    tableCounts: Array<{ table_name: string; count: number }>;
+    hourlyRate: Array<{ hour: string; count: number }>;
+  };
 }
 
 export default function SystemPage() {
@@ -68,11 +75,16 @@ export default function SystemPage() {
     );
   }
 
-  const agents = data?.agents || [];
-  const recentErrors = data?.recentErrors || [];
-  const eventCounts = data?.eventCounts || [];
-  const dbSize = data?.dbSize || 'N/A';
-  const eventRate = data?.eventRate || [];
+  const agents = data?.agentStatus || [];
+  const recentErrors = data?.errorLog || [];
+  const eventCounts = (data?.events?.total || []).map(e => ({ event_type: e.event_type, cnt: e.count }));
+  const dbSizeBytes = data?.database?.sizeBytes || 0;
+  const dbSize = dbSizeBytes > 0
+    ? dbSizeBytes >= 1048576
+      ? `${(dbSizeBytes / 1048576).toFixed(1)} MB`
+      : `${(dbSizeBytes / 1024).toFixed(0)} KB`
+    : 'N/A';
+  const eventRate = (data?.events?.hourlyRate || []).map(e => ({ hour: e.hour, count: e.count }));
 
   // Event rate chart
   const eventRateData = {
@@ -167,7 +179,8 @@ export default function SystemPage() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
           gap: 10,
         }}>
-          {AGENTS.map(agentName => {
+          {/* Show all known agents plus any from the API not in the static list */}
+          {[...new Set([...AGENTS, ...agents.map(a => a.agent)])].map(agentName => {
             const status = agents.find(a => a.agent === agentName);
             const isRecent = status ? (Date.now() - new Date(status.last_seen).getTime()) < 3600000 : false;
             const isStale = status ? (Date.now() - new Date(status.last_seen).getTime()) > 3600000 : false;
@@ -227,7 +240,7 @@ export default function SystemPage() {
                 }}>
                   {status ? (
                     <>
-                      <span style={{ color: '#666' }}>{status.last_event}</span>
+                      <span style={{ color: '#666' }}>{status.last_event_type}</span>
                       <span style={{ color: '#333' }}> &middot; </span>
                       <span>{new Date(status.last_seen).toLocaleTimeString()}</span>
                     </>

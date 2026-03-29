@@ -41,13 +41,23 @@ export default function EventFeed() {
       const es = new EventSource('/api/events');
       eventSourceRef.current = es;
 
-      es.onmessage = (e) => {
+      // SSE sends named events: "event: system_event", so we must use addEventListener
+      es.addEventListener('system_event', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
+          // Map API fields: created_at -> timestamp, event_type -> type
+          const eventType = data.event_type || '';
+          let type: EventItem['type'] = 'info';
+          if (eventType.includes('error')) type = 'error';
+          else if (eventType.includes('discover') || eventType === 'discovery') type = 'discovery';
+          else if (eventType.includes('scor')) type = 'scoring';
+          else if (eventType.includes('approv')) type = 'approval';
+          else if (eventType === 'startup' || eventType === 'health_check') type = 'info';
+
           const newEvent: EventItem = {
-            id: `evt-${++eventIdCounter.current}`,
-            timestamp: data.timestamp || new Date().toISOString(),
-            type: data.type || 'info',
+            id: data.id || `evt-${++eventIdCounter.current}`,
+            timestamp: data.created_at || data.timestamp || new Date().toISOString(),
+            type,
             agent: data.agent || data.source || 'system',
             message: data.message || data.text || JSON.stringify(data),
           };
@@ -61,13 +71,13 @@ export default function EventFeed() {
           });
 
           // Trigger neural mesh pulse on discovery or approval events
-          if ((data.type === 'discovery' || data.type === 'approval') && window.__ghostPulse) {
+          if ((type === 'discovery' || type === 'approval') && window.__ghostPulse) {
             window.__ghostPulse();
           }
         } catch {
           // Ignore malformed events
         }
-      };
+      });
 
       es.onerror = () => {
         es.close();

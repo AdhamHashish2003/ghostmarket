@@ -156,39 +156,31 @@ export default function PipelineViz() {
       if (!res.ok) return;
       const data = await res.json();
 
-      // data expected shape: { stages: { [stageName]: { count, lastActivity } } }
-      // or an array. Handle both.
+      // API returns { stageCounts: [{stage, count}], lastActivity: [{stage, last_activity}], ... }
       const stageInfo: Record<string, { count: number; lastActivity: string | null }> = {};
 
-      if (data.stages) {
-        // Map DB stage names to viz stages
-        for (const [dbStage, info] of Object.entries(data.stages)) {
-          const vizStage = STAGE_MAP[dbStage] || dbStage;
-          if (!stageInfo[vizStage]) {
-            stageInfo[vizStage] = { count: 0, lastActivity: null };
-          }
-          const typedInfo = info as { count: number; lastActivity?: string | null };
-          stageInfo[vizStage].count += typedInfo.count || 0;
-          if (typedInfo.lastActivity) {
-            if (!stageInfo[vizStage].lastActivity ||
-                new Date(typedInfo.lastActivity) > new Date(stageInfo[vizStage].lastActivity!)) {
-              stageInfo[vizStage].lastActivity = typedInfo.lastActivity;
-            }
-          }
+      // Map stageCounts array into stageInfo
+      const stageCounts = Array.isArray(data.stageCounts) ? data.stageCounts : [];
+      for (const item of stageCounts) {
+        const vizStage = STAGE_MAP[item.stage] || item.stage;
+        if (!stageInfo[vizStage]) {
+          stageInfo[vizStage] = { count: 0, lastActivity: null };
         }
-      } else if (Array.isArray(data)) {
-        for (const item of data) {
-          const vizStage = STAGE_MAP[item.stage] || item.stage;
-          if (!stageInfo[vizStage]) {
-            stageInfo[vizStage] = { count: 0, lastActivity: null };
-          }
-          stageInfo[vizStage].count += item.count || 1;
-          if (item.lastActivity || item.last_activity || item.updated_at) {
-            const act = item.lastActivity || item.last_activity || item.updated_at;
-            if (!stageInfo[vizStage].lastActivity ||
-                new Date(act) > new Date(stageInfo[vizStage].lastActivity!)) {
-              stageInfo[vizStage].lastActivity = act;
-            }
+        stageInfo[vizStage].count += item.count || 0;
+      }
+
+      // Map lastActivity array into stageInfo
+      const lastActivity = Array.isArray(data.lastActivity) ? data.lastActivity : [];
+      for (const item of lastActivity) {
+        const vizStage = STAGE_MAP[item.stage] || item.stage;
+        if (!stageInfo[vizStage]) {
+          stageInfo[vizStage] = { count: 0, lastActivity: null };
+        }
+        const act = item.last_activity || item.lastActivity;
+        if (act) {
+          if (!stageInfo[vizStage].lastActivity ||
+              new Date(act) > new Date(stageInfo[vizStage].lastActivity!)) {
+            stageInfo[vizStage].lastActivity = act;
           }
         }
       }
