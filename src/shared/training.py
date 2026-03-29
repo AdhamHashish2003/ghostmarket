@@ -5,6 +5,7 @@ and format for XGBoost features / QLoRA JSONL export.
 """
 
 import json
+import os
 import sqlite3
 import uuid as _uuid_mod
 from contextlib import contextmanager
@@ -12,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
-DB_PATH = Path("/data/ghostmarket.db")
+DB_PATH = Path(os.getenv("GHOSTMARKET_DB", "/data/ghostmarket.db"))
 
 
 def _now_iso() -> str:
