@@ -5,7 +5,7 @@ import fs from 'fs';
 
 export const dynamic = 'force-dynamic';
 
-const DB_PATH = process.env.GHOSTMARKET_DB || path.resolve(process.cwd(), '../../data/ghostmarket.db');
+const DB_PATH = process.env.GHOSTMARKET_DB || '/mnt/c/Users/Adham/ghostmarket/data/ghostmarket.db';
 
 function getDb(): Database.Database {
   const db = new Database(DB_PATH, { readonly: true });

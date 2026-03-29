@@ -40,13 +40,25 @@ NON_PRODUCT_KEYWORDS = {
     "guide", "how to", "tips", "advice", "til", "eli5", "psa", "reminder",
     "rant", "discussion", "question", "help", "opinion", "review", "story",
     "news", "update", "meta", "rule", "mod", "announcement", "megathread",
-    "weekly", "daily", "monthly",
+    "weekly", "daily", "monthly", "did you know", "in 2022", "in 2023",
+    "in 2024", "in 2025", "in 2026", "fact", "facts", "fart", "stolen",
+    "published", "according to", "study", "research", "scientists",
+    "percent", "million", "billion", "war", "military", "missile",
+    "government", "president", "election", "politician", "lawsuit",
+    "arrested", "convicted", "sentenced", "murdered", "died", "killed",
+    "nestle", "nestlé", "official statement", "children's book",
+    "mammal", "species", "animal", "planet", "universe", "history",
+    "century", "ancient", "medieval", "documentary",
 }
 
 NON_PRODUCT_PREFIXES = (
     "I ", "We ", "My ", "This ", "When ", "Why ", "How ", "If ", "Just ",
     "Don't ", "Can't ", "Do ", "Does ", "Did ", "Has ", "Have ", "Was ",
     "Were ", "Is ", "Are ", "Am ", "What ", "Where ", "Who ", "Which ",
+    "In ", "The ", "A ", "An ", "It ", "They ", "He ", "She ", "You ",
+    "That ", "These ", "Those ", "There ", "Here ", "So ", "But ",
+    "After ", "Before ", "During ", "Since ", "Because ", "Although ",
+    "TIL ", "PSA ", "FYI ", "BREAKING", "UPDATE", "RIP ",
 )
 
 # --- BUG 10 fix: category detection keywords ---
@@ -73,7 +85,7 @@ CATEGORY_MATCH_KEYWORDS: dict[str, list[str]] = {
 def _is_non_product_title(title: str) -> bool:
     """Return True if the title looks like a non-product post (BUG 7)."""
     # Too long to be a product name
-    if len(title) > 80:
+    if len(title) > 60:
         return True
 
     # Ends with a question mark (it's a question, not a product)
@@ -91,6 +103,25 @@ def _is_non_product_title(title: str) -> bool:
     for prefix in NON_PRODUCT_PREFIXES:
         if title.startswith(prefix):
             return True
+
+    # Must contain at least one word from any product category to be considered
+    title_lower = title_lower  # already computed above
+    all_product_words = set()
+    for keywords in CATEGORY_MATCH_KEYWORDS.values():
+        all_product_words.update(keywords)
+    # Also accept common product-indicator words
+    all_product_words.update({
+        "tool", "device", "gadget", "accessory", "kit", "set", "pack",
+        "machine", "appliance", "equipment", "gear", "supply", "case",
+        "stand", "holder", "mount", "cover", "protector", "bag", "box",
+        "bottle", "cup", "mug", "jar", "basket", "dispenser", "cleaner",
+        "heater", "cooler", "fan", "purifier", "humidifier", "diffuser",
+        "sensor", "detector", "alarm", "lock", "smart", "wireless",
+        "bluetooth", "usb", "portable", "mini", "electric", "automatic",
+        "solar", "rechargeable", "foldable", "adjustable", "waterproof",
+    })
+    if not any(pw in title_lower for pw in all_product_words):
+        return True
 
     return False
 
