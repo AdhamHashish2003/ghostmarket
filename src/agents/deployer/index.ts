@@ -9,6 +9,7 @@ import type { Product, LandingPage, ContentPost } from '../../shared/types.js';
 
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN || '';
+const VERCEL_SCOPE = process.env.VERCEL_ORG_ID || '';
 const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN || '';
 
 const BUFFER_PROFILE_IDS: Record<string, string> = {
@@ -48,8 +49,9 @@ async function deployToVercel(productId: string, landingPage: LandingPage): Prom
   }
 
   try {
+    const scopeFlag = VERCEL_SCOPE ? ` --scope ${VERCEL_SCOPE}` : '';
     const result = execSync(
-      `vercel deploy --prod --yes --token=${VERCEL_TOKEN}`,
+      `vercel deploy --prod --yes --token=${VERCEL_TOKEN}${scopeFlag}`,
       { cwd: deployDir, encoding: 'utf-8', timeout: 120000 },
     ).trim();
 
