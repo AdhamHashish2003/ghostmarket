@@ -121,8 +121,8 @@ REDDIT_FEEDS = [
     ("shutupandtakemymoney", "hot"),
     ("gadgets", "rising"),
     ("BuyItForLife", "hot"),
+    ("coolguides", "hot"),
     ("trending", "hot"),
-    ("DidntKnowIWantedThat", "hot"),
 ]
 
 
@@ -136,9 +136,13 @@ def scrape_reddit() -> list[dict]:
         url = f"https://www.reddit.com/r/{sub_name}/{sort}.json?limit=25"
         try:
             resp = httpx.get(url, headers={"User-Agent": user_agent}, timeout=15, follow_redirects=True)
+            if resp.status_code == 429:
+                log.warning(f"Reddit r/{sub_name}/{sort} rate limited (429), skipping")
+                time.sleep(2)
+                continue
             if resp.status_code != 200:
-                log.warning(f"Reddit r/{sub_name}/{sort} returned {resp.status_code}")
-                time.sleep(3)
+                log.warning(f"Reddit r/{sub_name}/{sort} returned {resp.status_code}, skipping")
+                time.sleep(2)
                 continue
 
             data = resp.json()
@@ -186,7 +190,7 @@ def scrape_reddit() -> list[dict]:
                     },
                 })
 
-            time.sleep(3)  # Be polite between requests
+            time.sleep(2)  # Rate limit between subreddit requests
         except Exception as e:
             log.warning(f"Reddit r/{sub_name}/{sort} failed: {e}")
 
