@@ -20,7 +20,14 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(BOT_TOKEN, {
+  polling: { interval: 2000, params: { timeout: 10 } },
+});
+
+bot.on('polling_error', (err) => {
+  console.error('[Telegram] Polling error (will retry):', err.message?.substring(0, 100));
+});
+
 console.log('[Telegram] Bot starting...');
 
 // ============================================================
