@@ -1,220 +1,56 @@
-'use client';
+import { getDb } from '@/lib/db';
 
-import { useState, useEffect } from 'react';
-import MetricCard from '@/components/MetricCard';
-import NeonChart from '@/components/NeonChart';
-import DataTable from '@/components/DataTable';
-
-interface PnLAggregates {
-  total_revenue: number;
-  total_ad_spend: number;
-  total_profit: number;
-  total_orders: number;
-  products_with_revenue: number;
-  win_count: number;
-  loss_count: number;
-  breakeven_count: number;
-}
-
-interface PnLData {
-  perProduct: Array<{
-    keyword: string;
-    category: string;
-    score: number;
-    total_revenue: number;
-    total_ad_spend: number;
-    total_orders: number;
-    roas: number;
-    outcome_label: string;
-  }>;
-  aggregates: PnLAggregates;
-  roasDistribution: Array<unknown>;
-  dailyMetrics: Array<unknown>;
-  topPerformers: Array<{
-    keyword: string;
-    total_revenue: number;
-    total_ad_spend: number;
-    roas: number;
-    outcome_label: string;
-  }>;
-  worstPerformers: Array<{
-    keyword: string;
-    total_revenue: number;
-    total_ad_spend: number;
-    roas: number;
-    outcome_label: string;
-  }>;
-}
+export const dynamic = 'force-dynamic';
 
 export default function PnLPage() {
-  const [data, setData] = useState<PnLData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const db = getDb();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      try {
-        const res = await fetch('/api/pnl', { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const json = await res.json();
-          setData(json);
-        }
-      } catch {
-        // timeout or network error - keep showing whatever we have
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  // Aggregates
+  const agg = db.prepare(`
+    SELECT COALESCE(SUM(total_revenue),0) as rev, COALESCE(SUM(total_ad_spend),0) as spend,
+           COALESCE(SUM(total_revenue - total_ad_spend),0) as profit,
+           COALESCE(SUM(total_orders),0) as orders
+    FROM products
+  `).get() as { rev: number; spend: number; profit: number; orders: number };
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <div style={{
-          color: '#ffaa00',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '0.8rem',
-        }}>
-          Loading financial warfare data...
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <div style={{
-          color: '#555',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '0.8rem',
-        }}>
-          Unable to load P&amp;L data. Will retry on next visit.
-        </div>
-      </div>
-    );
-  }
-
-  const agg = data?.aggregates;
-  const revenue = agg?.total_revenue || 0;
-  const adSpend = agg?.total_ad_spend || 0;
-  const profit = agg?.total_profit || (revenue - adSpend);
+  const revenue = agg.rev;
+  const adSpend = agg.spend;
+  const profit = agg.profit;
+  const orders = agg.orders;
   const roas = adSpend > 0 ? revenue / adSpend : 0;
-  const wins = agg?.win_count || 0;
-  const losses = agg?.loss_count || 0;
-  const breakevens = agg?.breakeven_count || 0;
+
+  // Win/loss counts
+  const outcomeCounts = db.prepare(
+    "SELECT outcome_label, COUNT(*) as cnt FROM products WHERE outcome_label IS NOT NULL GROUP BY outcome_label"
+  ).all() as Array<{ outcome_label: string; cnt: number }>;
+
+  const outcomeMap: Record<string, number> = {};
+  for (const o of outcomeCounts) {
+    outcomeMap[o.outcome_label] = o.cnt;
+  }
+  const wins = outcomeMap['win'] || 0;
+  const losses = outcomeMap['loss'] || 0;
+  const breakevens = outcomeMap['breakeven'] || 0;
   const totalLabeled = wins + losses + breakevens;
   const winRate = totalLabeled > 0 ? ((wins / totalLabeled) * 100).toFixed(0) : '0';
-  const products = data?.perProduct || [];
 
-  // ROAS distribution chart
-  const roasProducts = products.filter(p => p.roas != null && p.roas > 0);
-  const roasChartData = {
-    labels: roasProducts.map(p => p.keyword.slice(0, 15)),
-    datasets: [{
-      label: 'ROAS',
-      data: roasProducts.map(p => p.roas),
-      backgroundColor: roasProducts.map(p =>
-        p.roas >= 3 ? '#00ff6688' : p.roas >= 1.5 ? '#ffaa0088' : '#ff334488'
-      ),
-      borderColor: roasProducts.map(p =>
-        p.roas >= 3 ? '#00ff66' : p.roas >= 1.5 ? '#ffaa00' : '#ff3344'
-      ),
-    }],
-  };
+  // Per-product P&L
+  const perProduct = db.prepare(`
+    SELECT id, keyword, total_revenue, total_ad_spend, (total_revenue - total_ad_spend) as profit,
+           CASE WHEN total_ad_spend > 0 THEN total_revenue / total_ad_spend ELSE NULL END as roas,
+           outcome_label
+    FROM products WHERE total_revenue > 0 OR total_ad_spend > 0 ORDER BY total_revenue DESC
+  `).all() as Array<{
+    id: string;
+    keyword: string;
+    total_revenue: number;
+    total_ad_spend: number;
+    profit: number;
+    roas: number | null;
+    outcome_label: string | null;
+  }>;
 
-  // Top/Worst performers from API (fall back to client-side sort if empty)
-  const topPerformers = (data?.topPerformers && data.topPerformers.length > 0)
-    ? data.topPerformers
-    : [...products].sort((a, b) => (b.total_revenue - b.total_ad_spend) - (a.total_revenue - a.total_ad_spend)).slice(0, 5);
-  const worstPerformers = (data?.worstPerformers && data.worstPerformers.length > 0)
-    ? data.worstPerformers
-    : [...products].sort((a, b) => (a.total_revenue - a.total_ad_spend) - (b.total_revenue - b.total_ad_spend)).slice(0, 5);
-
-  const tableColumns = [
-    {
-      key: 'keyword',
-      label: 'Product',
-      render: (val: string) => (
-        <span style={{ color: '#00f0ff', fontWeight: 600 }}>{val}</span>
-      ),
-    },
-    {
-      key: 'score',
-      label: 'Score',
-      align: 'center' as const,
-      render: (val: number) => (
-        <span style={{ color: (val || 0) >= 80 ? '#00ff66' : '#888' }}>{val?.toFixed(0) || '-'}</span>
-      ),
-    },
-    {
-      key: 'total_revenue',
-      label: 'Revenue',
-      align: 'right' as const,
-      render: (val: number) => (
-        <span style={{ color: '#00ff66', fontWeight: 600 }}>${(val || 0).toFixed(2)}</span>
-      ),
-    },
-    {
-      key: 'total_ad_spend',
-      label: 'Ad Spend',
-      align: 'right' as const,
-      render: (val: number) => (
-        <span style={{ color: '#ff3344' }}>${(val || 0).toFixed(2)}</span>
-      ),
-    },
-    {
-      key: 'profit',
-      label: 'Profit',
-      align: 'right' as const,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const p = (Number(row.total_revenue) || 0) - (Number(row.total_ad_spend) || 0);
-        return (
-          <span style={{ color: p >= 0 ? '#00ff66' : '#ff3344', fontWeight: 700 }}>
-            ${p.toFixed(2)}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'roas',
-      label: 'ROAS',
-      align: 'center' as const,
-      render: (val: number) => (
-        <span style={{
-          color: (val || 0) >= 2 ? '#00ff66' : (val || 0) >= 1 ? '#ffaa00' : '#ff3344',
-        }}>
-          {val?.toFixed(1) || '-'}x
-        </span>
-      ),
-    },
-    {
-      key: 'total_orders',
-      label: 'Orders',
-      align: 'center' as const,
-    },
-    {
-      key: 'outcome_label',
-      label: 'Outcome',
-      align: 'center' as const,
-      render: (val: string) => {
-        const colors: Record<string, string> = { win: '#00ff66', loss: '#ff3344', breakeven: '#ffaa00' };
-        return (
-          <span style={{
-            color: colors[val] || '#666',
-            fontWeight: 600,
-            fontSize: '0.7rem',
-            textTransform: 'uppercase',
-          }}>
-            {val || '--'}
-          </span>
-        );
-      },
-    },
-  ];
+  const hasFinancialData = revenue > 0 || adSpend > 0;
 
   return (
     <div>
@@ -235,7 +71,7 @@ export default function PnLPage() {
           fontFamily: "'JetBrains Mono', monospace",
           marginTop: 4,
         }}>
-          Financial warfare analytics & performance tracking
+          Financial warfare analytics &amp; performance tracking
         </div>
       </div>
 
@@ -246,12 +82,29 @@ export default function PnLPage() {
         gap: 12,
         marginBottom: 28,
       }}>
-        <MetricCard label="Total Revenue" value={`$${revenue.toFixed(2)}`} color="#00ff66" icon="$" />
-        <MetricCard label="Total Ad Spend" value={`$${adSpend.toFixed(2)}`} color="#ff3344" icon="$" />
-        <MetricCard label="Net Profit" value={`$${profit.toFixed(2)}`} color={profit >= 0 ? '#00ff66' : '#ff3344'} icon={profit >= 0 ? '\u2191' : '\u2193'} />
-        <MetricCard label="Overall ROAS" value={`${roas.toFixed(2)}x`} color={roas >= 2 ? '#00ff66' : '#ffaa00'} />
-        <MetricCard label="Win Rate" value={`${winRate}%`} color="#8b5cf6" />
+        <MetricCardInline label="Total Revenue" value={`$${revenue.toFixed(2)}`} color="#00ff66" icon="$" />
+        <MetricCardInline label="Total Ad Spend" value={`$${adSpend.toFixed(2)}`} color="#ff3344" icon="$" />
+        <MetricCardInline label="Net Profit" value={`$${profit.toFixed(2)}`} color={profit >= 0 ? '#00ff66' : '#ff3344'} icon={profit >= 0 ? '\u2191' : '\u2193'} />
+        <MetricCardInline label="Overall ROAS" value={`${roas.toFixed(2)}x`} color={roas >= 2 ? '#00ff66' : '#ffaa00'} />
+        <MetricCardInline label="Win Rate" value={`${winRate}%`} color="#8b5cf6" />
       </div>
+
+      {/* No data message */}
+      {!hasFinancialData && (
+        <div style={{
+          background: '#111118',
+          border: '1px solid #1a1a24',
+          borderRadius: 8,
+          padding: '24px 20px',
+          textAlign: 'center',
+          color: '#555',
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '0.78rem',
+          marginBottom: 28,
+        }}>
+          No revenue data yet -- approve products and tag outcomes to see financial metrics.
+        </div>
+      )}
 
       {/* Win/Loss Summary */}
       <div style={{
@@ -276,10 +129,7 @@ export default function PnLPage() {
           }}>
             <div style={{
               position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 2,
+              top: 0, left: 0, right: 0, height: 2,
               background: `linear-gradient(90deg, transparent, ${item.color}, transparent)`,
               opacity: 0.5,
             }} />
@@ -306,94 +156,137 @@ export default function PnLPage() {
         ))}
       </div>
 
-      {/* ROAS Distribution */}
-      {roasChartData.labels.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <SectionLabel>ROAS Distribution</SectionLabel>
-          <NeonChart type="bar" data={roasChartData} />
+      {/* Per-Product P&L Table */}
+      {perProduct.length > 0 && (
+        <div>
+          <SectionLabel>Product Performance</SectionLabel>
+          <div style={{
+            background: '#111118',
+            border: '1px solid #1a1a24',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '0.75rem',
+            }}>
+              <thead>
+                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Product</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Revenue</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Ad Spend</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Profit</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>ROAS</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perProduct.map(p => {
+                  const profitVal = p.profit || 0;
+                  const outcomeColors: Record<string, string> = { win: '#00ff66', loss: '#ff3344', breakeven: '#ffaa00' };
+                  return (
+                    <tr key={p.id} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                      <td style={{ padding: '8px 14px', color: '#00f0ff', fontWeight: 600 }}>
+                        {p.keyword}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'right', color: '#00ff66', fontWeight: 600 }}>
+                        ${(p.total_revenue || 0).toFixed(2)}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'right', color: '#ff3344' }}>
+                        ${(p.total_ad_spend || 0).toFixed(2)}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: profitVal >= 0 ? '#00ff66' : '#ff3344' }}>
+                        ${profitVal.toFixed(2)}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'center', color: (p.roas || 0) >= 2 ? '#00ff66' : (p.roas || 0) >= 1 ? '#ffaa00' : '#ff3344' }}>
+                        {p.roas != null ? `${p.roas.toFixed(1)}x` : '-'}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'center' }}>
+                        <span style={{
+                          color: p.outcome_label ? (outcomeColors[p.outcome_label] || '#666') : '#333',
+                          fontWeight: 600,
+                          fontSize: '0.7rem',
+                          textTransform: 'uppercase',
+                        }}>
+                          {p.outcome_label || '--'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Top / Worst Performers */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
-        <div>
-          <SectionLabel>Top Performers</SectionLabel>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {topPerformers.map((p, i) => {
-              const pProfit = (p.total_revenue || 0) - (p.total_ad_spend || 0);
-              return (
-                <div key={i} style={{
-                  background: '#111118',
-                  border: '1px solid #1a1a24',
-                  borderRadius: 8,
-                  padding: '10px 14px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}>
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: '0.78rem',
-                    color: '#e0e0e0',
-                  }}>
-                    {p.keyword}
-                  </span>
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    color: '#00ff66',
-                  }}>
-                    +${pProfit.toFixed(2)}
-                  </span>
-                </div>
-              );
-            })}
-            {topPerformers.length === 0 && <EmptyState>No data yet</EmptyState>}
-          </div>
-        </div>
-        <div>
-          <SectionLabel>Worst Performers</SectionLabel>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {worstPerformers.map((p, i) => {
-              const pProfit = (p.total_revenue || 0) - (p.total_ad_spend || 0);
-              return (
-                <div key={i} style={{
-                  background: '#111118',
-                  border: '1px solid #1a1a24',
-                  borderRadius: 8,
-                  padding: '10px 14px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}>
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: '0.78rem',
-                    color: '#e0e0e0',
-                  }}>
-                    {p.keyword}
-                  </span>
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    color: '#ff3344',
-                  }}>
-                    ${pProfit.toFixed(2)}
-                  </span>
-                </div>
-              );
-            })}
-            {worstPerformers.length === 0 && <EmptyState>No data yet</EmptyState>}
-          </div>
-        </div>
+function MetricCardInline({ label, value, color, icon }: {
+  label: string;
+  value: string;
+  color: string;
+  icon?: string;
+}) {
+  return (
+    <div style={{
+      background: '#111118',
+      border: '1px solid #1a1a24',
+      borderRadius: 8,
+      padding: '16px 20px',
+      minWidth: 0,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, transparent, ${color}, transparent)`,
+        opacity: 0.6,
+      }} />
+      <div style={{
+        position: 'absolute',
+        top: -20, right: -20,
+        width: 80, height: 80,
+        borderRadius: '50%',
+        background: color,
+        opacity: 0.03,
+        filter: 'blur(20px)',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+      }}>
+        <span style={{
+          fontSize: '0.7rem',
+          color: '#666',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {label}
+        </span>
+        {icon && (
+          <span style={{ fontSize: '1rem', opacity: 0.6 }}>
+            {icon}
+          </span>
+        )}
       </div>
-
-      {/* Full Product P&L Table */}
-      <div>
-        <SectionLabel>Product Performance</SectionLabel>
-        <DataTable columns={tableColumns} data={products} sortable />
+      <div style={{
+        fontSize: '1.6rem',
+        fontWeight: 700,
+        color,
+        fontFamily: "'JetBrains Mono', monospace",
+        lineHeight: 1.2,
+        textShadow: `0 0 20px ${color}44`,
+      }}>
+        {value}
       </div>
     </div>
   );
@@ -409,23 +302,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       letterSpacing: '0.1em',
       textTransform: 'uppercase',
       marginBottom: 10,
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
-      borderRadius: 8,
-      padding: '20px',
-      textAlign: 'center',
-      color: '#333',
-      fontFamily: "'JetBrains Mono', monospace",
-      fontSize: '0.75rem',
     }}>
       {children}
     </div>

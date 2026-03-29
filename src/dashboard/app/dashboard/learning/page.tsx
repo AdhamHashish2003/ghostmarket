@@ -1,135 +1,57 @@
-'use client';
+import { getDb } from '@/lib/db';
 
-import { useState, useEffect } from 'react';
-import NeonChart from '@/components/NeonChart';
+export const dynamic = 'force-dynamic';
 
-interface LearningData {
-  cycles: Array<{
+export default function LearningPage() {
+  const db = getDb();
+
+  // Learning cycles
+  const cycles = db.prepare(
+    'SELECT * FROM learning_cycles ORDER BY created_at DESC LIMIT 20'
+  ).all() as Array<{
     id: number;
     cycle_type: string;
     model_version_after: string;
     accuracy_before: number;
     accuracy_after: number;
     training_samples: number;
-    deployed: boolean;
+    deployed: number;
     created_at: string;
+    strategy_reflection: string | null;
   }>;
-  featureImportance: Array<{ feature: string; importance: number }> | null;
-  sourceHitRates: Array<{ source: string; total: number; wins: number }> | null;
-  strategyReflection: string | null;
-  labelDistribution: Array<{ outcome_label: string; count: number }>;
-  accuracyTrend: Array<{ date: string; accuracy: number }>;
-  samplesTrend: Array<{ date: string; samples: number }>;
-}
 
-export default function LearningPage() {
-  const [data, setData] = useState<LearningData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Label distribution
+  const labelDistribution = db.prepare(
+    "SELECT outcome_label, COUNT(*) as count FROM products WHERE outcome_label IS NOT NULL GROUP BY outcome_label"
+  ).all() as Array<{ outcome_label: string; count: number }>;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      try {
-        const res = await fetch('/api/learning', { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const json = await res.json();
-          setData(json);
-        }
-      } catch {
-        // timeout or network error - keep showing whatever we have
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  // Source hit rates
+  let sourceHitRates: Array<{ source: string; total: number; wins: number }> = [];
+  try {
+    sourceHitRates = db.prepare(`
+      SELECT ts.source, COUNT(*) as total,
+        SUM(CASE WHEN ts.eventual_outcome = 'win' THEN 1 ELSE 0 END) as wins
+      FROM trend_signals ts WHERE ts.eventual_outcome IS NOT NULL GROUP BY ts.source
+    `).all() as Array<{ source: string; total: number; wins: number }>;
+  } catch { /* table may not have eventual_outcome column */ }
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <div style={{
-          color: '#00f0ff',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '0.8rem',
-        }}>
-          Loading neural learning data...
-        </div>
-      </div>
-    );
-  }
+  // Labeled count
+  const labeledRow = db.prepare(
+    "SELECT COUNT(*) as cnt FROM products WHERE outcome_label IS NOT NULL"
+  ).get() as { cnt: number };
+  const labeledCount = labeledRow.cnt;
 
-  if (!data) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <div style={{
-          color: '#555',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '0.8rem',
-        }}>
-          Unable to load learning data. Will retry on next visit.
-        </div>
-      </div>
-    );
-  }
+  // QLoRA pairs
+  let qloraPairs = 0;
+  try {
+    const qloraRow = db.prepare(
+      "SELECT COUNT(*) as cnt FROM llm_calls WHERE outcome_quality IN ('keep', 'flip')"
+    ).get() as { cnt: number };
+    qloraPairs = qloraRow.cnt;
+  } catch { /* ok */ }
 
-  const cycles = data?.cycles || [];
-  const sourceRates = data?.sourceHitRates || [];
-  const featureImportance = data?.featureImportance || [];
-  const labelDistribution = data?.labelDistribution || [];
-  const labeledCount = labelDistribution.reduce((sum, l) => sum + (l.count || 0), 0);
-  const qloraPairs = 0; // Not provided by /api/learning
-
-  // Accuracy over time chart data
-  const accuracyData = {
-    labels: cycles.filter(c => c.accuracy_after).map(c => new Date(c.created_at).toLocaleDateString()),
-    datasets: [
-      {
-        label: 'Accuracy',
-        data: cycles.filter(c => c.accuracy_after).map(c => c.accuracy_after * 100),
-        borderColor: '#00f0ff',
-      },
-    ],
-  };
-
-  // Feature importance chart
-  const featureData = {
-    labels: featureImportance.map(f => f.feature.replace(/_/g, ' ')),
-    datasets: [
-      {
-        label: 'Importance',
-        data: featureImportance.map(f => f.importance),
-        backgroundColor: featureImportance.map((_, i) => {
-          const colors = ['#00f0ff', '#ff00aa', '#00ff66', '#ffaa00', '#8b5cf6', '#ff3344', '#06b6d4'];
-          return colors[i % colors.length] + '88';
-        }),
-        borderColor: featureImportance.map((_, i) => {
-          const colors = ['#00f0ff', '#ff00aa', '#00ff66', '#ffaa00', '#8b5cf6', '#ff3344', '#06b6d4'];
-          return colors[i % colors.length];
-        }),
-      },
-    ],
-  };
-
-  // Source hit rates chart
-  const sourceData = {
-    labels: sourceRates.map(s => s.source),
-    datasets: [
-      {
-        label: 'Win Rate %',
-        data: sourceRates.map(s => s.total > 0 ? (s.wins / s.total * 100) : 0),
-        backgroundColor: sourceRates.map(s => {
-          const rate = s.total > 0 ? (s.wins / s.total * 100) : 0;
-          return rate > 40 ? '#00ff6688' : rate > 20 ? '#ffaa0088' : '#ff334488';
-        }),
-        borderColor: sourceRates.map(s => {
-          const rate = s.total > 0 ? (s.wins / s.total * 100) : 0;
-          return rate > 40 ? '#00ff66' : rate > 20 ? '#ffaa00' : '#ff3344';
-        }),
-      },
-    ],
-  };
+  // Strategy reflection from latest cycle
+  const latestReflection = cycles.find(c => c.strategy_reflection)?.strategy_reflection || null;
 
   return (
     <div>
@@ -150,7 +72,7 @@ export default function LearningPage() {
           fontFamily: "'JetBrains Mono', monospace",
           marginTop: 4,
         }}>
-          Model training, feature analysis & strategy evolution
+          Model training, feature analysis &amp; strategy evolution
         </div>
       </div>
 
@@ -167,42 +89,107 @@ export default function LearningPage() {
         <StatusCard label="QLoRA Ready" value={qloraPairs >= 50 ? 'ARMED' : 'PENDING'} met={qloraPairs >= 50} />
       </div>
 
-      {/* Charts Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
-        <div>
-          <SectionLabel>Model Accuracy Over Time</SectionLabel>
-          {accuracyData.labels.length > 0 ? (
-            <NeonChart type="line" data={accuracyData} options={{ scales: { y: { min: 0, max: 100 } } }} />
-          ) : (
-            <EmptyState>No accuracy data yet</EmptyState>
-          )}
+      {/* Label Distribution */}
+      {labelDistribution.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <SectionLabel>Label Distribution</SectionLabel>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 10,
+          }}>
+            {labelDistribution.map(l => {
+              const colors: Record<string, string> = { win: '#00ff66', loss: '#ff3344', breakeven: '#ffaa00' };
+              const color = colors[l.outcome_label] || '#666';
+              return (
+                <div key={l.outcome_label} style={{
+                  background: '#111118',
+                  border: `1px solid ${color}33`,
+                  borderRadius: 8,
+                  padding: '16px 14px',
+                  textAlign: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, height: 2,
+                    background: `linear-gradient(90deg, transparent, ${color}, transparent)`,
+                    opacity: 0.5,
+                  }} />
+                  <div style={{
+                    fontSize: '1.3rem',
+                    fontWeight: 700,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    color,
+                    textShadow: `0 0 12px ${color}33`,
+                  }}>
+                    {l.count}
+                  </div>
+                  <div style={{
+                    fontSize: '0.6rem',
+                    color: '#666',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    marginTop: 4,
+                  }}>
+                    {l.outcome_label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div>
-          <SectionLabel>Feature Importance</SectionLabel>
-          {featureData.labels.length > 0 ? (
-            <NeonChart
-              type="bar"
-              data={featureData}
-              options={{ indexAxis: 'y' }}
-            />
-          ) : (
-            <EmptyState>No feature importance data yet</EmptyState>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Source Hit Rates */}
-      <div style={{ marginBottom: 28 }}>
-        <SectionLabel>Source Hit Rates</SectionLabel>
-        {sourceData.labels.length > 0 ? (
-          <NeonChart type="bar" data={sourceData} />
-        ) : (
-          <EmptyState>No labeled data available for source analysis</EmptyState>
-        )}
-      </div>
+      {sourceHitRates.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <SectionLabel>Source Hit Rates</SectionLabel>
+          <div style={{
+            background: '#111118',
+            border: '1px solid #1a1a24',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '0.75rem',
+            }}>
+              <thead>
+                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Wins</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Win Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sourceHitRates.map(s => {
+                  const rate = s.total > 0 ? (s.wins / s.total * 100) : 0;
+                  const rateColor = rate > 40 ? '#00ff66' : rate > 20 ? '#ffaa00' : '#ff3344';
+                  return (
+                    <tr key={s.source} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                      <td style={{ padding: '8px 14px', color: '#00f0ff', fontWeight: 600 }}>{s.source}</td>
+                      <td style={{ padding: '8px 14px', textAlign: 'center', color: '#aaa' }}>{s.total}</td>
+                      <td style={{ padding: '8px 14px', textAlign: 'center', color: '#00ff66' }}>{s.wins}</td>
+                      <td style={{ padding: '8px 14px', textAlign: 'center', color: rateColor, fontWeight: 700 }}>
+                        {rate.toFixed(0)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Strategy Reflection */}
-      {data?.strategyReflection && (
+      {latestReflection && (
         <div style={{ marginBottom: 28 }}>
           <SectionLabel>Latest Strategy Reflection</SectionLabel>
           <div style={{
@@ -217,7 +204,7 @@ export default function LearningPage() {
             whiteSpace: 'pre-wrap',
             borderLeft: '3px solid #ff00aa44',
           }}>
-            {data.strategyReflection}
+            {latestReflection}
           </div>
         </div>
       )}
@@ -347,10 +334,7 @@ function StatusCard({ label, value, threshold, met }: {
     }}>
       <div style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 2,
+        top: 0, left: 0, right: 0, height: 2,
         background: `linear-gradient(90deg, transparent, ${color}, transparent)`,
         opacity: 0.5,
       }} />
@@ -373,23 +357,6 @@ function StatusCard({ label, value, threshold, met }: {
       }}>
         {label}
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
-      borderRadius: 8,
-      padding: '40px 20px',
-      textAlign: 'center',
-      color: '#333',
-      fontFamily: "'JetBrains Mono', monospace",
-      fontSize: '0.75rem',
-    }}>
-      {children}
     </div>
   );
 }

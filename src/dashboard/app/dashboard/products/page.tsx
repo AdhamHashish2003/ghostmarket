@@ -1,10 +1,7 @@
-'use client';
+import { getDb } from '@/lib/db';
+import Link from 'next/link';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import DataTable from '@/components/DataTable';
-
-const STAGES = ['', 'discovered', 'scored', 'approved', 'building', 'live', 'tracking', 'completed', 'skipped', 'killed'];
+export const dynamic = 'force-dynamic';
 
 const STAGE_COLORS: Record<string, string> = {
   discovered: '#00f0ff',
@@ -18,143 +15,30 @@ const STAGE_COLORS: Record<string, string> = {
   killed: '#ff3344',
 };
 
-interface Product {
-  id: string;
-  keyword: string;
-  score: number;
-  stage: string;
-  category: string;
-  source: string;
-  created_at: string;
-  outcome_label: string;
-  margin_pct: number;
-}
+const OUTCOME_COLORS: Record<string, string> = {
+  win: '#00ff66',
+  loss: '#ff3344',
+  breakeven: '#ffaa00',
+};
 
 export default function ProductsPage() {
-  const router = useRouter();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [stage, setStage] = useState('');
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('score');
+  const db = getDb();
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        sort,
-        ...(stage && { stage }),
-        ...(search && { search }),
-      });
-      const res = await fetch(`/api/products?${params}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data.products || data.rows || []);
-        setTotal(data.pagination?.total || 0);
-      }
-    } catch {
-      // timeout or network error - keep showing whatever we have
-    } finally {
-      setLoading(false);
-    }
-  }, [page, stage, search, sort]);
+  const products = db.prepare(`
+    SELECT id, keyword, category, stage, score, decision, outcome_label, created_at
+    FROM products ORDER BY score DESC NULLS LAST, created_at DESC
+  `).all() as Array<{
+    id: string;
+    keyword: string;
+    category: string;
+    stage: string;
+    score: number | null;
+    decision: string | null;
+    outcome_label: string | null;
+    created_at: string;
+  }>;
 
-  useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
-
-  const columns = [
-    {
-      key: 'keyword',
-      label: 'Keyword',
-      render: (val: string) => (
-        <span style={{ color: '#00f0ff', fontWeight: 600 }}>{val}</span>
-      ),
-    },
-    {
-      key: 'score',
-      label: 'Score',
-      align: 'center' as const,
-      render: (val: number) => (
-        <span style={{
-          fontWeight: 700,
-          color: (val || 0) >= 80 ? '#00ff66' : (val || 0) >= 60 ? '#ffaa00' : '#666',
-          textShadow: (val || 0) >= 80 ? '0 0 8px #00ff6644' : 'none',
-        }}>
-          {val?.toFixed(0) || '--'}
-        </span>
-      ),
-    },
-    {
-      key: 'stage',
-      label: 'Stage',
-      align: 'center' as const,
-      render: (val: string) => (
-        <span style={{
-          background: `${STAGE_COLORS[val] || '#333'}22`,
-          color: STAGE_COLORS[val] || '#666',
-          padding: '2px 8px',
-          borderRadius: 4,
-          fontSize: '0.7rem',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          border: `1px solid ${STAGE_COLORS[val] || '#333'}44`,
-        }}>
-          {val}
-        </span>
-      ),
-    },
-    {
-      key: 'category',
-      label: 'Category',
-      render: (val: string) => (
-        <span style={{ color: '#888' }}>{val || '-'}</span>
-      ),
-    },
-    {
-      key: 'source',
-      label: 'Source',
-      render: (val: string) => (
-        <span style={{ color: '#666' }}>{val || '-'}</span>
-      ),
-    },
-    {
-      key: 'outcome_label',
-      label: 'Outcome',
-      align: 'center' as const,
-      render: (val: string) => {
-        if (!val) return <span style={{ color: '#333' }}>--</span>;
-        const colors: Record<string, string> = { win: '#00ff66', loss: '#ff3344', breakeven: '#ffaa00' };
-        return (
-          <span style={{
-            color: colors[val] || '#666',
-            fontWeight: 600,
-            fontSize: '0.7rem',
-            textTransform: 'uppercase',
-          }}>
-            {val}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'created_at',
-      label: 'Created',
-      align: 'right' as const,
-      render: (val: string) => (
-        <span style={{ color: '#555', fontSize: '0.7rem' }}>
-          {val ? new Date(val).toLocaleDateString() : '-'}
-        </span>
-      ),
-    },
-  ];
+  const total = products.length;
 
   return (
     <div>
@@ -180,158 +64,116 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div style={{
-        display: 'flex',
-        gap: 12,
-        marginBottom: 20,
-        alignItems: 'center',
-        flexWrap: 'wrap',
-      }}>
-        {/* Stage Dropdown */}
-        <select
-          value={stage}
-          onChange={(e) => { setStage(e.target.value); setPage(1); }}
-          style={{
-            background: '#111118',
-            color: '#e0e0e0',
-            border: '1px solid #1a1a24',
-            borderRadius: 6,
-            padding: '8px 12px',
-            fontSize: '0.8rem',
-            fontFamily: "'JetBrains Mono', monospace",
-            outline: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <option value="">All Stages</option>
-          {STAGES.filter(Boolean).map(s => (
-            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-          ))}
-        </select>
-
-        {/* Sort */}
-        <select
-          value={sort}
-          onChange={(e) => { setSort(e.target.value); setPage(1); }}
-          style={{
-            background: '#111118',
-            color: '#e0e0e0',
-            border: '1px solid #1a1a24',
-            borderRadius: 6,
-            padding: '8px 12px',
-            fontSize: '0.8rem',
-            fontFamily: "'JetBrains Mono', monospace",
-            outline: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <option value="score">Sort: Score</option>
-          <option value="created_at">Sort: Newest</option>
-          <option value="keyword">Sort: Keyword</option>
-        </select>
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search keywords..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          style={{
-            background: '#111118',
-            color: '#e0e0e0',
-            border: '1px solid #1a1a24',
-            borderRadius: 6,
-            padding: '8px 14px',
-            fontSize: '0.8rem',
-            fontFamily: "'JetBrains Mono', monospace",
-            outline: 'none',
-            flex: 1,
-            minWidth: 200,
-          }}
-        />
-      </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div style={{
-          textAlign: 'center',
-          padding: 40,
-          color: '#333',
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '0.8rem',
-        }}>
-          <div style={{ color: '#00f0ff', marginBottom: 8 }}>Scanning neural network...</div>
-          <div style={{
-            width: 40,
-            height: 2,
-            background: 'linear-gradient(90deg, transparent, #00f0ff, transparent)',
-            margin: '0 auto',
-            animation: 'pulse 1.5s infinite',
-          }} />
-        </div>
-      )}
-
       {/* Data Table */}
-      {!loading && (
-        <DataTable
-          columns={columns}
-          data={products}
-          sortable
-          onRowClick={(row) => router.push(`/dashboard/products/${row.id}`)}
-        />
-      )}
-
-      {/* Pagination */}
-      {!loading && total > 20 && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: 8,
-          marginTop: 20,
+      <div style={{
+        background: '#111118',
+        border: '1px solid #1a1a24',
+        borderRadius: 8,
+        overflow: 'hidden',
+      }}>
+        <table style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '0.75rem',
         }}>
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            style={{
-              background: '#111118',
-              color: page <= 1 ? '#333' : '#00f0ff',
-              border: '1px solid #1a1a24',
-              borderRadius: 6,
-              padding: '6px 14px',
-              fontSize: '0.75rem',
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: page <= 1 ? 'default' : 'pointer',
-            }}
-          >
-            PREV
-          </button>
-          <span style={{
-            padding: '6px 14px',
-            fontSize: '0.75rem',
-            fontFamily: "'JetBrains Mono', monospace",
-            color: '#666',
-          }}>
-            Page {page} of {Math.ceil(total / 20)}
-          </span>
-          <button
-            disabled={page >= Math.ceil(total / 20)}
-            onClick={() => setPage(p => p + 1)}
-            style={{
-              background: '#111118',
-              color: page >= Math.ceil(total / 20) ? '#333' : '#00f0ff',
-              border: '1px solid #1a1a24',
-              borderRadius: 6,
-              padding: '6px 14px',
-              fontSize: '0.75rem',
-              fontFamily: "'JetBrains Mono', monospace",
-              cursor: page >= Math.ceil(total / 20) ? 'default' : 'pointer',
-            }}
-          >
-            NEXT
-          </button>
-        </div>
-      )}
+          <thead>
+            <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Keyword</th>
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Score</th>
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stage</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Category</th>
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Decision</th>
+              <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outcome</th>
+              <th style={{ padding: '10px 14px', textAlign: 'right', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p) => {
+              const scoreVal = p.score ?? 0;
+              const scoreColor = scoreVal >= 80 ? '#00ff66' : scoreVal >= 60 ? '#ffaa00' : '#666';
+              const stageColor = STAGE_COLORS[p.stage] || '#333';
+              const outcomeColor = p.outcome_label ? (OUTCOME_COLORS[p.outcome_label] || '#666') : '#333';
+
+              return (
+                <tr key={p.id} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                  <td style={{ padding: '8px 14px' }}>
+                    <Link
+                      href={`/dashboard/products/${p.id}`}
+                      style={{
+                        color: '#00f0ff',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {p.keyword}
+                    </Link>
+                  </td>
+                  <td style={{ padding: '8px 14px', textAlign: 'center' }}>
+                    <span style={{
+                      fontWeight: 700,
+                      color: scoreColor,
+                      textShadow: scoreVal >= 80 ? '0 0 8px #00ff6644' : 'none',
+                    }}>
+                      {p.score != null ? Math.round(p.score) : '--'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 14px', textAlign: 'center' }}>
+                    <span style={{
+                      background: `${stageColor}22`,
+                      color: stageColor,
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      fontSize: '0.7rem',
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      border: `1px solid ${stageColor}44`,
+                    }}>
+                      {p.stage}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 14px', color: '#888' }}>
+                    {p.category || '-'}
+                  </td>
+                  <td style={{ padding: '8px 14px', textAlign: 'center', color: '#888' }}>
+                    {p.decision || '--'}
+                  </td>
+                  <td style={{ padding: '8px 14px', textAlign: 'center' }}>
+                    {p.outcome_label ? (
+                      <span style={{
+                        color: outcomeColor,
+                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        textTransform: 'uppercase',
+                      }}>
+                        {p.outcome_label}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#333' }}>--</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '8px 14px', textAlign: 'right', color: '#555', fontSize: '0.7rem' }}>
+                    {p.created_at ? new Date(p.created_at).toLocaleDateString() : '-'}
+                  </td>
+                </tr>
+              );
+            })}
+            {products.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{
+                  padding: 40,
+                  textAlign: 'center',
+                  color: '#333',
+                  fontSize: '0.75rem',
+                }}>
+                  No products discovered yet. Pipeline awaiting activation...
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
