@@ -17,7 +17,9 @@ const commonEnv = {
 
 module.exports = {
   apps: [
-    // TypeScript services (via tsx)
+    // ============================================================
+    // Core Services
+    // ============================================================
     {
       name: 'orchestrator',
       script: 'npx',
@@ -29,19 +31,59 @@ module.exports = {
       autorestart: true,
       watch: false,
       kill_timeout: 10000,
+      exp_backoff_restart_delay: 1000,
+      max_memory_restart: '500M',
+      error_file: path.resolve(__dirname, 'logs/orchestrator-error.log'),
+      out_file: path.resolve(__dirname, 'logs/orchestrator-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
     {
       name: 'telegram-bot',
       script: 'npx',
       args: 'tsx src/telegram/index.ts',
       cwd: __dirname,
-      env: commonEnv,
+      env: { ...commonEnv, ORCHESTRATOR_URL: 'http://localhost:4000' },
       restart_delay: 5000,
       max_restarts: 50,
       autorestart: true,
       watch: false,
       kill_timeout: 10000,
+      exp_backoff_restart_delay: 1000,
+      max_memory_restart: '300M',
+      error_file: path.resolve(__dirname, 'logs/telegram-error.log'),
+      out_file: path.resolve(__dirname, 'logs/telegram-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
+
+    // ============================================================
+    // Dashboard
+    // ============================================================
+    {
+      name: 'dashboard',
+      script: 'npx',
+      args: 'next dev -p 3333',
+      cwd: path.resolve(__dirname, 'src/dashboard'),
+      env: {
+        ...commonEnv,
+        NODE_ENV: 'development',
+        ORCHESTRATOR_URL: 'http://localhost:4000',
+      },
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      error_file: path.resolve(__dirname, 'logs/dashboard-error.log'),
+      out_file: path.resolve(__dirname, 'logs/dashboard-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+
+    // ============================================================
+    // TypeScript Agents
+    // ============================================================
     {
       name: 'builder',
       script: 'npx',
@@ -52,6 +94,11 @@ module.exports = {
       max_restarts: 50,
       autorestart: true,
       watch: false,
+      max_memory_restart: '400M',
+      error_file: path.resolve(__dirname, 'logs/builder-error.log'),
+      out_file: path.resolve(__dirname, 'logs/builder-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
     {
       name: 'deployer',
@@ -63,6 +110,11 @@ module.exports = {
       max_restarts: 50,
       autorestart: true,
       watch: false,
+      max_memory_restart: '300M',
+      error_file: path.resolve(__dirname, 'logs/deployer-error.log'),
+      out_file: path.resolve(__dirname, 'logs/deployer-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
     {
       name: 'tracker',
@@ -74,20 +126,16 @@ module.exports = {
       max_restarts: 50,
       autorestart: true,
       watch: false,
-    },
-    {
-      name: 'dashboard',
-      script: 'npx',
-      args: 'next dev -p 3333',
-      cwd: path.resolve(__dirname, 'src/dashboard'),
-      env: { ...commonEnv, NODE_ENV: 'development' },
-      restart_delay: 5000,
-      max_restarts: 10,
-      autorestart: true,
-      watch: false,
+      max_memory_restart: '300M',
+      error_file: path.resolve(__dirname, 'logs/tracker-error.log'),
+      out_file: path.resolve(__dirname, 'logs/tracker-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
 
-    // Python services
+    // ============================================================
+    // Python Agents
+    // ============================================================
     {
       name: 'scout-light',
       script: 'python3',
@@ -102,6 +150,11 @@ module.exports = {
       max_restarts: 50,
       autorestart: true,
       watch: false,
+      max_memory_restart: '400M',
+      error_file: path.resolve(__dirname, 'logs/scout-error.log'),
+      out_file: path.resolve(__dirname, 'logs/scout-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
     {
       name: 'scorer',
@@ -117,6 +170,29 @@ module.exports = {
       max_restarts: 50,
       autorestart: true,
       watch: false,
+      max_memory_restart: '300M',
+      error_file: path.resolve(__dirname, 'logs/scorer-error.log'),
+      out_file: path.resolve(__dirname, 'logs/scorer-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+
+    // ============================================================
+    // Cloudflare Tunnel (for public access)
+    // ============================================================
+    {
+      name: 'tunnel',
+      script: '/tmp/cloudflared',
+      args: 'tunnel --url http://localhost:3333',
+      interpreter: 'none',
+      restart_delay: 5000,
+      max_restarts: 100,
+      autorestart: true,
+      watch: false,
+      error_file: path.resolve(__dirname, 'logs/tunnel-error.log'),
+      out_file: path.resolve(__dirname, 'logs/tunnel-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
   ],
 };
