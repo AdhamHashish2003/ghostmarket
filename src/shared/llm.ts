@@ -2,7 +2,7 @@
 // Logs every call to llm_calls table for training data capture
 
 import Groq from 'groq-sdk';
-import { getDb, uuid, nowISO, withRetry } from './db.js';
+import { getDb, uuid, withRetry } from './db.js';
 import type { LLMTaskType } from './types.js';
 
 interface LLMResponse {
@@ -90,7 +90,10 @@ async function callGemini(
     throw new Error(`Gemini API error: ${resp.status} ${await resp.text()}`);
   }
 
-  const data = await resp.json();
+  const data = await resp.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  };
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   return {
     text,
@@ -132,7 +135,10 @@ async function callNIM(
     throw new Error(`NIM API error: ${resp.status} ${await resp.text()}`);
   }
 
-  const data = await resp.json();
+  const data = await resp.json() as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
   const choice = data.choices?.[0];
   return {
     text: choice?.message?.content || '',
@@ -171,7 +177,12 @@ async function callOllama(
     throw new Error(`Ollama/ROG error: ${resp.status}`);
   }
 
-  const data = await resp.json();
+  const data = await resp.json() as {
+    text?: string;
+    model?: string;
+    tokens_in?: number;
+    tokens_out?: number;
+  };
   return {
     text: data.text || '',
     model_used: data.model || 'ghostmarket-local',

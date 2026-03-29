@@ -2,8 +2,8 @@
 // Generates brand kits, landing pages, ad creatives, and content calendars
 // Uses Groq LLM (with Ollama fallback after fine-tune) for all creative generation
 
-import { getDb, uuid, nowISO, withRetry } from '../../shared/db.js';
-import { llm, llmJSON } from '../../shared/llm.js';
+import { getDb, uuid, withRetry } from '../../shared/db.js';
+import { llmJSON } from '../../shared/llm.js';
 import type {
   Product, Supplier, TrendSignal, BrandKit, CopyApproach,
   HookType, AdPlatform, AdFormat, PostType,
@@ -38,7 +38,7 @@ async function generateBrandKit(product: Product, supplier: Supplier | null, sig
   const signalSummary = signals.map(s => `${s.source}: ${s.raw_signal_strength}`).join(', ');
   const priceRange = supplier ? `$${supplier.estimated_retail}` : '$20-30';
 
-  const { parsed, raw } = await llmJSON<BrandGenResult>({
+  const { parsed } = await llmJSON<BrandGenResult>({
     task_type: 'brand_naming',
     product_id: product.id,
     system_prompt: `You are an expert e-commerce brand strategist. Generate brand kits for dropshipping/POD products.
@@ -166,7 +166,7 @@ function generateHTML(
   price: number,
   primaryColor: string,
   accentColor: string,
-  productKeyword: string,
+  _productKeyword: string,
 ): string {
   const benefitsHTML = copy.benefits
     .map(b => `<li>${b}</li>`)

@@ -4,8 +4,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { getDb, uuid, withRetry } from '../shared/db.js';
 import type {
-  Product, Supplier, TrendSignal, ScoreBreakdown,
-  OperatorAction,
+  Product, Supplier, TrendSignal,
 } from '../shared/types.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -31,10 +30,6 @@ console.log('[Telegram] Bot starting...');
 function formatProductCard(product: Product, supplier: Supplier | null, signals: TrendSignal[]): string {
   const score = product.score || 0;
   const isHighPriority = score >= 90;
-  const breakdown = typeof product.score_breakdown === 'string'
-    ? JSON.parse(product.score_breakdown) as ScoreBreakdown
-    : product.score_breakdown;
-
   const sourceChecks = [...new Set(signals.map(s => s.source))]
     .map(s => `${s.replace('_', ' ')} ✓`)
     .join(' · ');

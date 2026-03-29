@@ -4,8 +4,8 @@
 
 import express from 'express';
 import cron from 'node-cron';
-import { getDb, uuid, nowISO, withRetry } from '../shared/db.js';
-import type { ROGWorkerResult, AgentEvent } from '../shared/types.js';
+import { getDb, uuid, withRetry } from '../shared/db.js';
+import type { ROGWorkerResult } from '../shared/types.js';
 import { EventEmitter } from 'events';
 
 const app = express();

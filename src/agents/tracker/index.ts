@@ -3,7 +3,7 @@
 // Writes to campaign_metrics table to close the learning loop
 
 import { getDb, uuid, withRetry } from '../../shared/db.js';
-import type { Product, ContentPost } from '../../shared/types.js';
+import type { ContentPost } from '../../shared/types.js';
 
 const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN || '';
 

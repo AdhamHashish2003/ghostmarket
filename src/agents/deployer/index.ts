@@ -5,7 +5,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getDb, uuid, withRetry } from '../../shared/db.js';
-import type { Product, LandingPage, ContentPost, BrandKit } from '../../shared/types.js';
+import type { Product, LandingPage, ContentPost } from '../../shared/types.js';
 
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN || '';
