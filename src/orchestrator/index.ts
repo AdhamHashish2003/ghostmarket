@@ -221,6 +221,71 @@ eventBus.on('type:scrape', (result: ROGWorkerResult) => {
   eventBus.emit('agent:score');
 });
 
+// When learning cycle completes, forward results to Telegram
+eventBus.on('type:learn', (result: ROGWorkerResult) => {
+  if (!result.success) {
+    logEvent('orchestrator', 'error', 'error', `Learning cycle failed: ${result.error}`);
+    return;
+  }
+  console.log('[Pipeline] Learning cycle completed');
+  logEvent('orchestrator', 'health_check', 'info', 'Learning cycle completed', result.data || {});
+});
+
+// When Claude Code task completes, log it
+eventBus.on('type:claude_code', (result: ROGWorkerResult) => {
+  const status = result.success ? 'completed' : 'failed';
+  logEvent('orchestrator', result.success ? 'health_check' : 'error',
+    result.success ? 'info' : 'error',
+    `Claude Code task ${status}`,
+    result.data || { error: result.error },
+  );
+});
+
+// ============================================================
+// Health Monitoring — detect failing agents
+// ============================================================
+
+async function runHealthCheck(): Promise<void> {
+  const db = getDb();
+
+  // Check for agents with consecutive failures
+  const failingAgents = db.prepare(`
+    SELECT agent, COUNT(*) as failures
+    FROM system_events
+    WHERE severity IN ('error', 'critical')
+      AND created_at > datetime('now', '-24 hours')
+    GROUP BY agent
+    HAVING failures >= 10
+  `).all() as Array<{ agent: string; failures: number }>;
+
+  for (const agent of failingAgents) {
+    // Check if we already alerted recently
+    const recentAlert = db.prepare(`
+      SELECT 1 FROM system_events
+      WHERE agent = 'orchestrator' AND event_type = 'health_check'
+        AND message LIKE ? AND created_at > datetime('now', '-6 hours')
+    `).get(`%${agent.agent} failing%`);
+
+    if (!recentAlert) {
+      logEvent('orchestrator', 'health_check', 'warning',
+        `Agent ${agent.agent} failing: ${agent.failures} errors in last 24h`);
+    }
+  }
+
+  // Check ROG worker health
+  try {
+    const resp = await fetch(`${ROG_WORKER_URL}/health`, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) {
+      logEvent('orchestrator', 'health_check', 'warning', 'ROG worker unhealthy');
+    }
+  } catch {
+    logEvent('orchestrator', 'health_check', 'error', 'ROG worker unreachable');
+  }
+}
+
+// Run health check every 15 minutes
+setInterval(() => { runHealthCheck().catch(e => console.error('[Health] Check failed:', e)); }, 900000);
+
 // Expose event bus for other modules
 export { eventBus, sendToROG, paused, dailyBudget, telegramProductsToday, logEvent };
 
