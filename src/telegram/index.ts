@@ -229,6 +229,91 @@ bot.on('callback_query', async (query) => {
 // Command handlers
 // ============================================================
 
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, `👻 GhostMarket War Room — Online
+━━━━━━━━━━━━━━━━━━━━━━
+Initiating full pipeline scan...
+Phase 1: Scout (trend discovery)
+Phase 2: Scorer (neural scoring)
+Phase 3: Surface top products
+━━━━━━━━━━━━━━━━━━━━━━`);
+
+  // Phase 1: Trigger Scout
+  try {
+    await bot.sendMessage(chatId, '🔍 Phase 1: Running Scout agent...');
+    const scoutResp = await fetch(`${ORCHESTRATOR_URL}/trigger/scout`, { method: 'POST' });
+    const scoutData = await scoutResp.json() as { signals?: number; error?: string; skipped?: string };
+    if (scoutData.skipped) {
+      await bot.sendMessage(chatId, '⏸️ Pipeline is paused. Resume with /resume first.');
+      return;
+    }
+    if (scoutData.error) {
+      await bot.sendMessage(chatId, `⚠️ Scout warning: ${scoutData.error}\nContinuing with existing signals...`);
+    } else {
+      await bot.sendMessage(chatId, `✅ Scout complete — ${scoutData.signals || 0} total signals in database`);
+    }
+  } catch (e) {
+    await bot.sendMessage(chatId, `⚠️ Scout unavailable: ${e instanceof Error ? e.message : e}\nContinuing with existing data...`);
+  }
+
+  // Phase 2: Trigger Scorer
+  try {
+    await bot.sendMessage(chatId, '🧠 Phase 2: Running Scorer agent...');
+    const scorerResp = await fetch(`${ORCHESTRATOR_URL}/trigger/scorer`, { method: 'POST' });
+    const scorerData = await scorerResp.json() as { scored?: number; error?: string; skipped?: string };
+    if (scorerData.error) {
+      await bot.sendMessage(chatId, `⚠️ Scorer warning: ${scorerData.error}\nUsing existing scores...`);
+    } else {
+      await bot.sendMessage(chatId, `✅ Scorer complete — ${scorerData.scored || 0} products scored`);
+    }
+  } catch (e) {
+    await bot.sendMessage(chatId, `⚠️ Scorer unavailable: ${e instanceof Error ? e.message : e}\nUsing existing scores...`);
+  }
+
+  // Phase 3: Surface top products
+  try {
+    const db = getDb();
+    const topProducts = db.prepare(`
+      SELECT p.id, p.keyword, p.score, p.stage, p.category
+      FROM products p
+      WHERE p.score >= 65 AND p.stage IN ('scored', 'discovered')
+      ORDER BY p.score DESC
+      LIMIT 5
+    `).all() as Array<{ id: string; keyword: string; score: number; stage: string; category: string | null }>;
+
+    if (topProducts.length === 0) {
+      await bot.sendMessage(chatId, '📭 No products with score >= 65 found. Run more scout cycles or lower threshold.');
+      return;
+    }
+
+    await bot.sendMessage(chatId, `🎯 Phase 3: Top ${topProducts.length} products (score >= 65)\n━━━━━━━━━━━━━━━━━━━━━━`);
+
+    for (const product of topProducts) {
+      const text = `📦 ${product.keyword}
+Score: ${product.score}/100 | Stage: ${product.stage}
+Category: ${product.category || 'Uncategorized'}
+ID: ${product.id.slice(0, 8)}...`;
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: '✅ Approve', callback_data: `approve:${product.id}` },
+            { text: '⏭️ Skip', callback_data: `skip:${product.id}` },
+          ],
+        ],
+      };
+
+      await bot.sendMessage(chatId, text, { reply_markup: keyboard });
+    }
+
+    await bot.sendMessage(chatId, `━━━━━━━━━━━━━━━━━━━━━━
+Pipeline complete. Use /status for overview.`);
+  } catch (e) {
+    await bot.sendMessage(chatId, `❌ Failed to fetch products: ${e instanceof Error ? e.message : e}`);
+  }
+});
+
 bot.onText(/\/status/, async (msg) => {
   const db = getDb();
   const stages = db.prepare('SELECT stage, COUNT(*) as count FROM products GROUP BY stage').all() as Array<{ stage: string; count: number }>;

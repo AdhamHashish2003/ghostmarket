@@ -28,14 +28,20 @@ export default function LearningPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       try {
-        const res = await fetch('/api/learning');
+        const res = await fetch('/api/learning', { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (res.ok) {
           const json = await res.json();
           setData(json);
         }
-      } catch { /* silently fail */ }
-      setLoading(false);
+      } catch {
+        // timeout or network error - keep showing whatever we have
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, []);
@@ -49,6 +55,20 @@ export default function LearningPage() {
           fontSize: '0.8rem',
         }}>
           Loading neural learning data...
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div style={{ textAlign: 'center', padding: 60 }}>
+        <div style={{
+          color: '#555',
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '0.8rem',
+        }}>
+          Unable to load learning data. Will retry on next visit.
         </div>
       </div>
     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 interface EventItem {
   id: string;
@@ -29,72 +29,67 @@ function formatTimestamp(ts: string): string {
   }
 }
 
+function mapEventType(eventType: string): EventItem['type'] {
+  if (eventType.includes('error')) return 'error';
+  if (eventType.includes('discover') || eventType === 'discovery') return 'discovery';
+  if (eventType.includes('scor')) return 'scoring';
+  if (eventType.includes('approv')) return 'approval';
+  return 'info';
+}
+
 export default function EventFeed() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const eventIdCounter = useRef(0);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+
+  const pollEvents = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch('/api/pipeline', { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) return;
+      const data = await res.json();
+      const recentEvents: Array<Record<string, unknown>> = Array.isArray(data.recentEvents) ? data.recentEvents : [];
+
+      const newItems: EventItem[] = [];
+      for (const evt of recentEvents) {
+        const id = String(evt.id || evt.created_at || Math.random());
+        if (seenIdsRef.current.has(id)) continue;
+        seenIdsRef.current.add(id);
+
+        const eventType = String(evt.event_type || evt.type || '');
+        const type = mapEventType(eventType);
+        newItems.push({
+          id,
+          timestamp: String(evt.created_at || evt.timestamp || new Date().toISOString()),
+          type,
+          agent: String(evt.agent || evt.source || 'system'),
+          message: String(evt.message || evt.text || JSON.stringify(evt)),
+        });
+
+        // Trigger neural mesh pulse on discovery or approval events
+        if ((type === 'discovery' || type === 'approval') && (window as unknown as Record<string, unknown>).__ghostPulse) {
+          ((window as unknown as Record<string, unknown>).__ghostPulse as () => void)();
+        }
+      }
+
+      if (newItems.length > 0) {
+        setEvents(prev => {
+          const updated = [...newItems.reverse(), ...prev];
+          return updated.length > MAX_EVENTS ? updated.slice(0, MAX_EVENTS) : updated;
+        });
+      }
+    } catch {
+      // timeout or network error - keep showing whatever we have
+    }
+  }, []);
 
   useEffect(() => {
-    // Connect to SSE endpoint
-    const connect = () => {
-      const es = new EventSource('/api/events');
-      eventSourceRef.current = es;
-
-      // SSE sends named events: "event: system_event", so we must use addEventListener
-      es.addEventListener('system_event', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          // Map API fields: created_at -> timestamp, event_type -> type
-          const eventType = data.event_type || '';
-          let type: EventItem['type'] = 'info';
-          if (eventType.includes('error')) type = 'error';
-          else if (eventType.includes('discover') || eventType === 'discovery') type = 'discovery';
-          else if (eventType.includes('scor')) type = 'scoring';
-          else if (eventType.includes('approv')) type = 'approval';
-          else if (eventType === 'startup' || eventType === 'health_check') type = 'info';
-
-          const newEvent: EventItem = {
-            id: data.id || `evt-${++eventIdCounter.current}`,
-            timestamp: data.created_at || data.timestamp || new Date().toISOString(),
-            type,
-            agent: data.agent || data.source || 'system',
-            message: data.message || data.text || JSON.stringify(data),
-          };
-
-          setEvents(prev => {
-            const updated = [newEvent, ...prev];
-            if (updated.length > MAX_EVENTS) {
-              return updated.slice(0, MAX_EVENTS);
-            }
-            return updated;
-          });
-
-          // Trigger neural mesh pulse on discovery or approval events
-          if ((type === 'discovery' || type === 'approval') && window.__ghostPulse) {
-            window.__ghostPulse();
-          }
-        } catch {
-          // Ignore malformed events
-        }
-      });
-
-      es.onerror = () => {
-        es.close();
-        // Reconnect after 5 seconds
-        setTimeout(connect, 5000);
-      };
-    };
-
-    connect();
-
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-    };
-  }, []);
+    pollEvents();
+    const interval = setInterval(pollEvents, 5000);
+    return () => clearInterval(interval);
+  }, [pollEvents]);
 
   // Smooth scroll animation when new events arrive
   useEffect(() => {

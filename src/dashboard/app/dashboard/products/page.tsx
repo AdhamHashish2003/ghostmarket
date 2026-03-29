@@ -42,6 +42,8 @@ export default function ProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -49,14 +51,18 @@ export default function ProductsPage() {
         ...(stage && { stage }),
         ...(search && { search }),
       });
-      const res = await fetch(`/api/products?${params}`);
+      const res = await fetch(`/api/products?${params}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products || data.rows || []);
         setTotal(data.pagination?.total || 0);
       }
-    } catch { /* silently fail */ }
-    setLoading(false);
+    } catch {
+      // timeout or network error - keep showing whatever we have
+    } finally {
+      setLoading(false);
+    }
   }, [page, stage, search, sort]);
 
   useEffect(() => {

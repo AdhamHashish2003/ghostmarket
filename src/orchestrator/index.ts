@@ -4,6 +4,7 @@
 
 import express from 'express';
 import cron from 'node-cron';
+import { execSync } from 'child_process';
 import { getDb, uuid, withRetry } from '../shared/db.js';
 import type { ROGWorkerResult } from '../shared/types.js';
 import { EventEmitter } from 'events';
@@ -120,6 +121,63 @@ app.post('/trigger/deploy', (req, res) => {
 app.post('/trigger/learn', (_req, res) => {
   eventBus.emit('agent:learn');
   res.json({ triggered: 'learner' });
+});
+
+// Trigger Scout: runs light_sources.py, returns signal count
+app.post('/trigger/scout', async (_req, res) => {
+  if (paused) { res.json({ skipped: 'paused' }); return; }
+  try {
+    logEvent('orchestrator', 'health_check', 'info', 'Triggering scout via /trigger/scout');
+    execSync('python3 src/agents/scout/light_sources.py', {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      timeout: 120000,
+      stdio: 'pipe',
+    });
+    const db = getDb();
+    const signalCount = (db.prepare('SELECT COUNT(*) as c FROM trend_signals').get() as { c: number }).c;
+    res.json({ triggered: 'scout', signals: signalCount });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logEvent('orchestrator', 'api_failure', 'error', `Scout trigger failed: ${msg}`);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Trigger Scorer: runs scorer/main.py, returns scored count
+app.post('/trigger/scorer', async (_req, res) => {
+  if (paused) { res.json({ skipped: 'paused' }); return; }
+  try {
+    logEvent('orchestrator', 'health_check', 'info', 'Triggering scorer via /trigger/scorer');
+    execSync('python3 src/agents/scorer/main.py', {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      timeout: 120000,
+      stdio: 'pipe',
+    });
+    const db = getDb();
+    const scoredCount = (db.prepare("SELECT COUNT(*) as c FROM products WHERE stage = 'scored'").get() as { c: number }).c;
+    res.json({ triggered: 'scorer', scored: scoredCount });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logEvent('orchestrator', 'api_failure', 'error', `Scorer trigger failed: ${msg}`);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Trigger Builder for a specific product
+app.post('/trigger/builder/:id', async (req, res) => {
+  if (paused) { res.json({ skipped: 'paused' }); return; }
+  const { id } = req.params;
+  try {
+    logEvent('orchestrator', 'health_check', 'info', `Triggering builder for product ${id}`);
+    eventBus.emit('agent:build', id);
+    res.json({ triggered: 'builder', product_id: id, success: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logEvent('orchestrator', 'api_failure', 'error', `Builder trigger failed: ${msg}`);
+    res.status(500).json({ error: msg });
+  }
 });
 
 // Control endpoints

@@ -7,6 +7,7 @@ These are API-based (no browser needed), so they run on the primary PC.
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -33,6 +34,78 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "car_accessories": ["car phone mount", "car vacuum", "seat organizer", "dash cam", "LED strip car"],
     "pet_products": ["pet camera", "dog toy", "cat tree", "pet bed", "automatic feeder"],
 }
+
+# --- BUG 7 fix: non-product post filtering ---
+NON_PRODUCT_KEYWORDS = {
+    "guide", "how to", "tips", "advice", "til", "eli5", "psa", "reminder",
+    "rant", "discussion", "question", "help", "opinion", "review", "story",
+    "news", "update", "meta", "rule", "mod", "announcement", "megathread",
+    "weekly", "daily", "monthly",
+}
+
+NON_PRODUCT_PREFIXES = (
+    "I ", "We ", "My ", "This ", "When ", "Why ", "How ", "If ", "Just ",
+    "Don't ", "Can't ", "Do ", "Does ", "Did ", "Has ", "Have ", "Was ",
+    "Were ", "Is ", "Are ", "Am ", "What ", "Where ", "Who ", "Which ",
+)
+
+# --- BUG 10 fix: category detection keywords ---
+CATEGORY_MATCH_KEYWORDS: dict[str, list[str]] = {
+    "home_decor": ["lamp", "light", "decor", "shelf", "frame", "vase", "candle",
+                    "pillow", "rug", "curtain", "mirror", "clock", "plant", "holder", "organizer"],
+    "gadgets": ["phone", "charger", "cable", "earbuds", "headphone", "speaker", "camera",
+                "projector", "drone", "ring", "watch", "tracker", "keyboard", "mouse", "hub", "adapter"],
+    "fitness": ["yoga", "gym", "resistance", "band", "bottle", "mat", "roller",
+                "massage", "exercise", "weights", "jump", "rope", "pull"],
+    "kitchen": ["spice", "knife", "cutting", "board", "blender", "mixer", "pan", "pot",
+                "coffee", "tea", "mug", "cup", "container", "storage", "rack"],
+    "car_accessories": ["car", "mount", "phone", "dash", "seat", "cover", "led",
+                        "strip", "charger", "vacuum", "cleaner"],
+    "pet_products": ["dog", "cat", "pet", "leash", "collar", "bowl", "toy", "bed",
+                     "crate", "carrier", "treat"],
+    "beauty": ["skincare", "serum", "brush", "mirror", "makeup", "nail", "hair",
+               "curler", "dryer"],
+    "outdoor": ["camping", "tent", "hammock", "grill", "cooler", "backpack",
+                "flashlight", "lantern"],
+}
+
+
+def _is_non_product_title(title: str) -> bool:
+    """Return True if the title looks like a non-product post (BUG 7)."""
+    # Too long to be a product name
+    if len(title) > 80:
+        return True
+
+    # Ends with a question mark (it's a question, not a product)
+    if title.rstrip().endswith("?"):
+        return True
+
+    title_lower = title.lower()
+
+    # Contains non-product keywords
+    for kw in NON_PRODUCT_KEYWORDS:
+        if kw in title_lower:
+            return True
+
+    # Starts with common verb/pronoun prefixes (not product-like)
+    for prefix in NON_PRODUCT_PREFIXES:
+        if title.startswith(prefix):
+            return True
+
+    return False
+
+
+def _detect_category(title: str) -> str:
+    """Match title keywords to a product category (BUG 10). Returns category or 'other'."""
+    title_lower = title.lower()
+    best_category = "other"
+    best_count = 0
+    for category, keywords in CATEGORY_MATCH_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in title_lower)
+        if count > best_count:
+            best_count = count
+            best_category = category
+    return best_category
 
 
 # ============================================================
@@ -165,6 +238,11 @@ def scrape_reddit() -> list[dict]:
                 if not title:
                     continue
 
+                # BUG 7 fix: filter out non-product posts
+                if _is_non_product_title(title):
+                    log.debug(f"Filtered non-product post: {title[:60]}")
+                    continue
+
                 # Calculate velocity: upvote rate (upvotes per hour since creation)
                 age_hours = max((time.time() - created_utc) / 3600, 0.1)
                 upvote_rate = score / age_hours
@@ -212,15 +290,33 @@ def process_signals(signals: list[dict]) -> None:
     """Store signals in DB and create/update product entries."""
     log.info(f"Processing {len(signals)} signals")
 
+    from shared.training import get_db
+    stored = 0
+
     for signal in signals:
         keyword = signal["product_keyword"]
+
+        # BUG 10 fix: detect category from title keywords if not already set
+        if not signal.get("category"):
+            signal["category"] = _detect_category(keyword)
+
+        # BUG 8 fix: deduplicate by source_url + product_keyword
+        source_url = signal.get("source_url")
+        if source_url:
+            with get_db() as conn:
+                dup = conn.execute(
+                    "SELECT id FROM trend_signals WHERE source_url = ? AND product_keyword = ? LIMIT 1",
+                    [source_url, keyword],
+                ).fetchone()
+            if dup:
+                log.debug(f"Skipping duplicate signal for {keyword}: {source_url}")
+                continue
 
         # Find or create product
         product = find_product_by_keyword(keyword)
         product_id = product["id"] if product else create_product(keyword, signal.get("category"))
 
         # Determine cross-source hits
-        from shared.training import get_db
         with get_db() as conn:
             row = conn.execute(
                 "SELECT COUNT(DISTINCT source) as cnt FROM trend_signals WHERE product_keyword = ?",
@@ -236,14 +332,15 @@ def process_signals(signals: list[dict]) -> None:
             product_id=product_id,
             trend_velocity=signal.get("trend_velocity"),
             time_series_7d=signal.get("time_series_7d"),
-            source_url=signal.get("source_url"),
+            source_url=source_url,
             competing_ads_count=signal.get("competing_ads_count"),
             avg_engagement_rate=signal.get("avg_engagement_rate"),
             cross_source_hits=cross_source,
             signal_metadata=signal.get("signal_metadata"),
         )
+        stored += 1
 
-    log.info(f"Stored {len(signals)} signals")
+    log.info(f"Stored {stored}/{len(signals)} signals ({len(signals) - stored} skipped as duplicates)")
 
 
 # ============================================================

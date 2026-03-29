@@ -151,8 +151,11 @@ export default function PipelineViz() {
   const animFrameRef = useRef<number>(0);
 
   const fetchPipeline = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
-      const res = await fetch('/api/pipeline');
+      const res = await fetch('/api/pipeline', { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (!res.ok) return;
       const data = await res.json();
 
@@ -213,7 +216,7 @@ export default function PipelineViz() {
         }))
       );
     } catch {
-      // silently fail
+      // timeout or network error - keep previous values, don't reset to 0
     }
   }, []);
 

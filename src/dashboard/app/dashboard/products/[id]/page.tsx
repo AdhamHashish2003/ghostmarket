@@ -1,4 +1,5 @@
 import { getDb } from '@/lib/db';
+import ProductActions from '@/components/ProductActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,9 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       }}>
         &larr; BACK TO PRODUCTS
       </a>
+
+      {/* Action Buttons */}
+      <ProductActions productId={params.id} />
 
       {/* Product Header */}
       <div style={{

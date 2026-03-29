@@ -30,14 +30,20 @@ export default function TrainingPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       try {
-        const res = await fetch('/api/training');
+        const res = await fetch('/api/training', { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (res.ok) {
           const json = await res.json();
           setData(json);
         }
-      } catch { /* silently fail */ }
-      setLoading(false);
+      } catch {
+        // timeout or network error - keep showing whatever we have
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, []);
@@ -51,6 +57,20 @@ export default function TrainingPage() {
           fontSize: '0.8rem',
         }}>
           Scanning training data matrices...
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div style={{ textAlign: 'center', padding: 60 }}>
+        <div style={{
+          color: '#555',
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '0.8rem',
+        }}>
+          Unable to load training data. Will retry on next visit.
         </div>
       </div>
     );
