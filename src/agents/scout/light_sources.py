@@ -126,7 +126,7 @@ REDDIT_FEEDS = [
     ("gadgets", "rising"),
     ("BuyItForLife", "hot"),
     ("coolguides", "hot"),
-    ("trending", "hot"),
+    ("interestingasfuck", "hot"),
 ]
 
 

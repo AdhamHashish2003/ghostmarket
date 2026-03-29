@@ -312,17 +312,7 @@ def score_product(product_id: str) -> dict[str, Any] | None:
     else:
         decision = "skip"
 
-    # Log scoring event
-    log_training_event("products", {
-        "id": product_id,
-        "score": final_score,
-        "score_breakdown": json.dumps(breakdown),
-        "model_version": model_version,
-        "decision": decision,
-        "stage": "scored",
-    })
-
-    # Actually update product (not insert)
+    # Update product with score
     update_product(product_id, {
         "score": final_score,
         "score_breakdown": json.dumps(breakdown),

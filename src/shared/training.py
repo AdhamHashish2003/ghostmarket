@@ -6,7 +6,7 @@ and format for XGBoost features / QLoRA JSONL export.
 
 import json
 import sqlite3
-import uuid as _uuid
+import uuid as _uuid_mod
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +20,7 @@ def _now_iso() -> str:
 
 
 def _uuid() -> str:
-    return str(_uuid.uuid4())
+    return str(_uuid_mod.uuid4())
 
 
 @contextmanager
