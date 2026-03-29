@@ -1,0 +1,4 @@
+pytrends==4.9.2
+praw==7.8.1
+playwright==1.49.0
+httpx==0.28.1

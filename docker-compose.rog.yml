@@ -1,0 +1,85 @@
+version: "3.8"
+
+# GhostMarket — ASUS ROG (GPU Worker) Services
+# Runs on the ROG laptop — always on, handles heavy compute
+
+services:
+  rog-worker:
+    build:
+      context: .
+      dockerfile: src/rog-worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8500:8500"
+    volumes:
+      - ./data:/data
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  model-server:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  scout-heavy:
+    build:
+      context: .
+      dockerfile: src/agents/scout/Dockerfile.heavy
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+
+  image-processor:
+    build:
+      context: .
+      dockerfile: src/agents/image/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  learner:
+    build:
+      context: .
+      dockerfile: src/agents/learner/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  ollama-data:

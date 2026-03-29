@@ -1,0 +1,7 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY src/agents/scout/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY src/shared/training.py ./shared/training.py
+COPY src/agents/scout ./
+CMD ["python", "light_sources.py"]

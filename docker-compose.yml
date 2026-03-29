@@ -1,0 +1,85 @@
+version: "3.8"
+
+# GhostMarket — PC (Orchestrator) Services
+# Runs on the primary PC — always on
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: src/orchestrator/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+      - ./models:/models
+    ports:
+      - "4000:4000"
+    depends_on:
+      - dashboard
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: src/dashboard/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    ports:
+      - "3000:3000"
+
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: src/telegram/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+
+  scorer:
+    build:
+      context: .
+      dockerfile: src/agents/scorer/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+      - ./models:/models
+
+  builder:
+    build:
+      context: .
+      dockerfile: src/agents/builder/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+
+  deployer:
+    build:
+      context: .
+      dockerfile: src/agents/deployer/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+
+  tracker:
+    build:
+      context: .
+      dockerfile: src/agents/tracker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+
+  scout-light:
+    build:
+      context: .
+      dockerfile: src/agents/scout/Dockerfile.light
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
