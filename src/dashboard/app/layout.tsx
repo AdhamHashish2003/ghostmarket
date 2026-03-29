@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { href: '/pnl', label: 'P&L' },
   { href: '/training', label: 'Training Data' },
   { href: '/system', label: 'System' },
+  { href: '/control', label: 'Control Panel' },
+  { href: '/control/keys', label: 'API Keys' },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

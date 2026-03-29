@@ -22,10 +22,10 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
   return (
     <div>
-      <h1 style={{ fontSize: '1.5rem', marginBottom: 8 }}>{product.keyword as string}</h1>
+      <h1 style={{ fontSize: '1.5rem', marginBottom: 8 }}>{String(product.keyword)}</h1>
       <div style={{ color: '#888', marginBottom: 24 }}>
-        {product.category as string || 'Uncategorized'} · Stage: <b>{product.stage as string}</b> · Score: <b style={{ color: '#22c55e' }}>{(product.score as number)?.toFixed(0) || 'N/A'}</b>/100
-        {product.outcome_label && <> · Outcome: <b>{product.outcome_label === 'win' ? '✅ Win' : product.outcome_label === 'loss' ? '❌ Loss' : '➖ Breakeven'}</b></>}
+        {String(product.category || 'Uncategorized')} · Stage: <b>{String(product.stage)}</b> · Score: <b style={{ color: '#22c55e' }}>{product.score != null ? Number(product.score).toFixed(0) : 'N/A'}</b>/100
+        {product.outcome_label ? <> · Outcome: <b>{String(product.outcome_label) === 'win' ? '✅ Win' : String(product.outcome_label) === 'loss' ? '❌ Loss' : '➖ Breakeven'}</b></> : null}
       </div>
 
       {/* Score Breakdown */}
@@ -35,7 +35,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
             {Object.entries(breakdown).map(([key, value]) => (
               <div key={key} style={{ background: '#1a1a24', padding: 12, borderRadius: 6 }}>
                 <div style={{ fontSize: '0.75rem', color: '#888' }}>{key.replace(/_/g, ' ')}</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{(value as number).toFixed(0)}</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{Number(value).toFixed(0)}</div>
               </div>
             ))}
           </div>
@@ -46,8 +46,8 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       <Section title={`Trend Signals (${signals.length})`}>
         {signals.map((s, i) => (
           <div key={i} style={{ background: '#1a1a24', padding: 12, borderRadius: 6, marginBottom: 8 }}>
-            <b>{s.source as string}</b> · Strength: {(s.raw_signal_strength as number)?.toFixed(2)} · Velocity: {s.trend_velocity as string || '?'}
-            {s.source_url && <> · <a href={s.source_url as string} target="_blank" style={{ color: '#60a5fa' }}>Link</a></>}
+            <b>{String(s.source)}</b> · Strength: {s.raw_signal_strength != null ? Number(s.raw_signal_strength).toFixed(2) : '?'} · Velocity: {String(s.trend_velocity || '?')}
+            {s.source_url ? <> · <a href={String(s.source_url)} target="_blank" style={{ color: '#60a5fa' }}>Link</a></> : null}
           </div>
         ))}
       </Section>
@@ -56,67 +56,67 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       <Section title={`Suppliers (${suppliers.length})`}>
         {suppliers.map((s, i) => (
           <div key={i} style={{ background: '#1a1a24', padding: 12, borderRadius: 6, marginBottom: 8, border: s.is_best ? '1px solid #22c55e' : '1px solid transparent' }}>
-            <b>{s.platform as string}</b> {s.is_best ? '← BEST' : ''} ·
-            ${(s.unit_cost as number)?.toFixed(2)} + ${(s.shipping_cost as number)?.toFixed(2)} = <b>${(s.landed_cost as number)?.toFixed(2)}</b> ·
-            Margin: {(s.margin_pct as number)?.toFixed(0)}% ·
-            {s.warehouse && <> Warehouse: {s.warehouse as string} ·</>}
-            Rating: {s.seller_rating as number || '?'}
+            <b>{String(s.platform)}</b> {s.is_best ? '← BEST' : ''} ·
+            ${s.unit_cost != null ? Number(s.unit_cost).toFixed(2) : '?'} + ${s.shipping_cost != null ? Number(s.shipping_cost).toFixed(2) : '?'} = <b>${s.landed_cost != null ? Number(s.landed_cost).toFixed(2) : '?'}</b> ·
+            Margin: {s.margin_pct != null ? Number(s.margin_pct).toFixed(0) : '?'}% ·
+            {s.warehouse ? <> Warehouse: {String(s.warehouse)} ·</> : null}
+            Rating: {String(s.seller_rating || '?')}
           </div>
         ))}
       </Section>
 
       {/* Brand Kit */}
-      {brandKit && (
+      {brandKit ? (
         <Section title="Brand Kit">
           <div style={{ background: '#1a1a24', padding: 16, borderRadius: 6 }}>
-            <div><b>Name:</b> {brandKit.brand_name as string}</div>
-            <div><b>Bio:</b> {brandKit.instagram_bio as string}</div>
-            <div><b>Positioning:</b> {brandKit.page_description as string}</div>
-            {brandKit.color_palette && (
+            <div><b>Name:</b> {String(brandKit.brand_name)}</div>
+            <div><b>Bio:</b> {String(brandKit.instagram_bio)}</div>
+            <div><b>Positioning:</b> {String(brandKit.page_description)}</div>
+            {brandKit.color_palette ? (
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                {(JSON.parse(brandKit.color_palette as string) as string[]).map((c, i) => (
+                {(JSON.parse(String(brandKit.color_palette)) as string[]).map((c, i) => (
                   <div key={i} style={{ width: 40, height: 40, background: c, borderRadius: 4, border: '1px solid #333' }} title={c} />
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         </Section>
-      )}
+      ) : null}
 
       {/* Landing Pages */}
-      {pages.length > 0 && (
+      {pages.length > 0 ? (
         <Section title={`Landing Pages (${pages.length})`}>
           {pages.map((p, i) => (
             <div key={i} style={{ background: '#1a1a24', padding: 12, borderRadius: 6, marginBottom: 8 }}>
-              Variant {p.variant_id as string} ({p.copy_approach as string}) ·
-              {p.url ? <a href={p.url as string} target="_blank" style={{ color: '#60a5fa' }}>Visit</a> : 'Not deployed'} ·
-              Conv rate: {(p.conversion_rate as number)?.toFixed(3) || 'N/A'}
+              Variant {String(p.variant_id)} ({String(p.copy_approach)}) ·
+              {p.url ? <a href={String(p.url)} target="_blank" style={{ color: '#60a5fa' }}>Visit</a> : 'Not deployed'} ·
+              Conv rate: {p.conversion_rate != null ? Number(p.conversion_rate).toFixed(3) : 'N/A'}
             </div>
           ))}
         </Section>
-      )}
+      ) : null}
 
       {/* Financials */}
       <Section title="Financials">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-          <Metric label="Revenue" value={`$${(product.total_revenue as number) || 0}`} />
-          <Metric label="Ad Spend" value={`$${(product.total_ad_spend as number) || 0}`} />
-          <Metric label="Orders" value={String((product.total_orders as number) || 0)} />
-          <Metric label="ROAS" value={(product.roas as number)?.toFixed(1) || 'N/A'} />
+          <Metric label="Revenue" value={`$${Number(product.total_revenue) || 0}`} />
+          <Metric label="Ad Spend" value={`$${Number(product.total_ad_spend) || 0}`} />
+          <Metric label="Orders" value={String(Number(product.total_orders) || 0)} />
+          <Metric label="ROAS" value={product.roas != null ? Number(product.roas).toFixed(1) : 'N/A'} />
         </div>
       </Section>
 
       {/* Operator Decisions */}
-      {decisions.length > 0 && (
+      {decisions.length > 0 ? (
         <Section title="Operator Decisions">
           {decisions.map((d, i) => (
             <div key={i} style={{ background: '#1a1a24', padding: 8, borderRadius: 4, marginBottom: 4 }}>
-              {d.decision as string} · {new Date(d.created_at as string).toLocaleString()}
-              {d.modification_notes && <> · Notes: {d.modification_notes as string}</>}
+              {String(d.decision)} · {new Date(String(d.created_at)).toLocaleString()}
+              {d.modification_notes ? <> · Notes: {String(d.modification_notes)}</> : null}
             </div>
           ))}
         </Section>
-      )}
+      ) : null}
     </div>
   );
 }
