@@ -11,7 +11,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-import praw
+import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.training import (
@@ -117,68 +117,81 @@ def scrape_google_trends() -> list[dict]:
 # Reddit
 # ============================================================
 
-def scrape_reddit() -> list[dict]:
-    """Monitor product-focused subreddits for velocity signals."""
-    log.info("Starting Reddit scrape")
-    signals: list[dict] = []
+REDDIT_FEEDS = [
+    ("shutupandtakemymoney", "hot"),
+    ("gadgets", "rising"),
+    ("BuyItForLife", "hot"),
+    ("trending", "hot"),
+    ("DidntKnowIWantedThat", "hot"),
+]
 
-    client_id = os.getenv("REDDIT_CLIENT_ID")
-    client_secret = os.getenv("REDDIT_CLIENT_SECRET")
+
+def scrape_reddit() -> list[dict]:
+    """Monitor product-focused subreddits via public .json feeds (no API key needed)."""
+    log.info("Starting Reddit scrape (public JSON feeds)")
+    signals: list[dict] = []
     user_agent = os.getenv("REDDIT_USER_AGENT", "ghostmarket:v1.0")
 
-    if not client_id or not client_secret:
-        log.warning("Reddit credentials not set, skipping")
-        return signals
+    for sub_name, sort in REDDIT_FEEDS:
+        url = f"https://www.reddit.com/r/{sub_name}/{sort}.json?limit=25"
+        try:
+            resp = httpx.get(url, headers={"User-Agent": user_agent}, timeout=15, follow_redirects=True)
+            if resp.status_code != 200:
+                log.warning(f"Reddit r/{sub_name}/{sort} returned {resp.status_code}")
+                time.sleep(3)
+                continue
 
-    try:
-        reddit = praw.Reddit(
-            client_id=client_id,
-            client_secret=client_secret,
-            user_agent=user_agent,
-        )
+            data = resp.json()
+            posts = data.get("data", {}).get("children", [])
+            log.info(f"Reddit r/{sub_name}/{sort}: {len(posts)} posts")
 
-        subreddits = ["shutupandtakemymoney", "BuyItForLife", "gadgets", "coolguides", "DidntKnowIWantedThat"]
+            for item in posts:
+                post = item.get("data", {})
+                score = post.get("score", 0)
+                created_utc = post.get("created_utc", time.time())
+                title = post.get("title", "")
+                permalink = post.get("permalink", "")
+                upvote_ratio = post.get("upvote_ratio", 0.5)
+                num_comments = post.get("num_comments", 0)
 
-        for sub_name in subreddits:
-            try:
-                subreddit = reddit.subreddit(sub_name)
+                if not title:
+                    continue
 
-                for post in subreddit.hot(limit=25):
-                    # Calculate velocity: upvote rate (upvotes per hour since creation)
-                    age_hours = max((time.time() - post.created_utc) / 3600, 0.1)
-                    upvote_rate = post.score / age_hours
+                # Calculate velocity: upvote rate (upvotes per hour since creation)
+                age_hours = max((time.time() - created_utc) / 3600, 0.1)
+                upvote_rate = score / age_hours
 
-                    # Only surface posts with high velocity (>50 upvotes/hour) or high absolute score
-                    if upvote_rate < 50 and post.score < 500:
-                        continue
+                # Only surface posts with high velocity (>50 upvotes/hour) or high absolute score
+                if upvote_rate < 50 and score < 500:
+                    continue
 
-                    # Normalize strength: 100 upvotes/hr = 0.5, 500+ = 1.0
-                    strength = min(upvote_rate / 1000, 1.0)
-                    velocity = "rising" if age_hours < 6 else ("peaking" if age_hours < 24 else "declining")
+                # Normalize strength: 100 upvotes/hr = 0.5, 500+ = 1.0
+                strength = min(upvote_rate / 1000, 1.0)
+                velocity = "rising" if age_hours < 6 else ("peaking" if age_hours < 24 else "declining")
 
-                    signals.append({
-                        "source": "reddit",
-                        "product_keyword": post.title[:100],
-                        "raw_signal_strength": strength,
-                        "trend_velocity": velocity,
-                        "source_url": f"https://reddit.com{post.permalink}",
-                        "avg_engagement_rate": post.upvote_ratio,
-                        "signal_metadata": {
-                            "subreddit": sub_name,
-                            "score": post.score,
-                            "upvote_rate": round(upvote_rate, 1),
-                            "num_comments": post.num_comments,
-                            "age_hours": round(age_hours, 1),
-                        },
-                    })
+                signals.append({
+                    "source": "reddit",
+                    "product_keyword": title[:100],
+                    "raw_signal_strength": strength,
+                    "trend_velocity": velocity,
+                    "source_url": f"https://reddit.com{permalink}",
+                    "avg_engagement_rate": upvote_ratio,
+                    "signal_metadata": {
+                        "subreddit": sub_name,
+                        "sort": sort,
+                        "score": score,
+                        "upvote_rate": round(upvote_rate, 1),
+                        "num_comments": num_comments,
+                        "age_hours": round(age_hours, 1),
+                    },
+                })
 
-                time.sleep(2)  # Be nice to Reddit API
-            except Exception as e:
-                log.warning(f"Reddit r/{sub_name} failed: {e}")
+            time.sleep(3)  # Be polite between requests
+        except Exception as e:
+            log.warning(f"Reddit r/{sub_name}/{sort} failed: {e}")
 
-    except Exception as e:
-        log.error(f"Reddit scrape failed: {e}")
-        log_system_event("scout-light", "scrape_failure", "error", f"Reddit failed: {e}")
+    if not signals:
+        log_system_event("scout-light", "scrape_failure", "warning", "Reddit returned no signals")
 
     return signals
 
