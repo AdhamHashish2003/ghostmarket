@@ -49,20 +49,24 @@ def scrape_google_trends() -> list[dict]:
     try:
         pytrends = TrendReq(hl="en-US", tz=360)
 
-        # Get trending searches (US)
-        trending = pytrends.trending_searches(pn="united_states")
-        for _, row in trending.head(20).iterrows():
-            keyword = str(row[0]).strip()
-            if not keyword:
-                continue
-            signals.append({
-                "source": "google_trends",
-                "product_keyword": keyword,
-                "raw_signal_strength": 0.5,  # Base strength for trending
-                "trend_velocity": "rising",
-                "signal_metadata": {"type": "trending_search"},
-            })
-            time.sleep(2)  # Rate limit
+        # trending_searches endpoint is broken upstream (404 from Google)
+        # Skip it and rely on interest_over_time for seed keywords
+        try:
+            trending = pytrends.trending_searches(pn="united_states")
+            for _, row in trending.head(20).iterrows():
+                keyword = str(row[0]).strip()
+                if not keyword:
+                    continue
+                signals.append({
+                    "source": "google_trends",
+                    "product_keyword": keyword,
+                    "raw_signal_strength": 0.5,
+                    "trend_velocity": "rising",
+                    "signal_metadata": {"type": "trending_search"},
+                })
+                time.sleep(2)
+        except Exception as e:
+            log.warning(f"trending_searches unavailable (known issue): {e}")
 
         # Check interest over time for seed category keywords
         for category, keywords in CATEGORY_KEYWORDS.items():
