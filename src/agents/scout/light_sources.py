@@ -414,6 +414,117 @@ def scrape_reddit() -> list[dict]:
 
 
 # ============================================================
+# Amazon Movers & Shakers
+# ============================================================
+
+AMAZON_CATEGORIES = [
+    ("electronics", "https://www.amazon.com/gp/movers-and-shakers/electronics"),
+    ("home_decor", "https://www.amazon.com/gp/movers-and-shakers/home-garden"),
+    ("pet_products", "https://www.amazon.com/gp/movers-and-shakers/pet-supplies"),
+    ("car_accessories", "https://www.amazon.com/gp/movers-and-shakers/automotive"),
+    ("kitchen", "https://www.amazon.com/gp/movers-and-shakers/kitchen"),
+    ("fitness", "https://www.amazon.com/gp/movers-and-shakers/sports-and-fitness"),
+]
+
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+]
+
+
+def scrape_amazon_movers() -> list[dict]:
+    """Scrape Amazon Movers & Shakers for trending products."""
+    from bs4 import BeautifulSoup
+    import random
+
+    log.info("Starting Amazon Movers & Shakers scrape")
+    signals: list[dict] = []
+
+    for category, url in AMAZON_CATEGORIES:
+        ua = random.choice(_USER_AGENTS)
+        try:
+            resp = httpx.get(url, headers={
+                "User-Agent": ua,
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-US,en;q=0.9",
+            }, timeout=15, follow_redirects=True)
+
+            if resp.status_code != 200:
+                log.warning(f"Amazon {category}: HTTP {resp.status_code}, skipping")
+                time.sleep(2)
+                continue
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            # Extract product names from image alt text (most reliable on Amazon)
+            faceouts = soup.select('.zg-grid-general-faceout')
+            log.info(f"Amazon {category}: {len(faceouts)} items found")
+
+            for item in faceouts[:10]:  # Max 10 per category
+                # Get title from img alt (always present, full product name)
+                img = item.select_one('img[alt]')
+                if not img:
+                    continue
+                title = img.get('alt', '').strip()
+                if not title or len(title) < 5:
+                    continue
+
+                # Extract the core product name: take first 3-4 meaningful words
+                # Amazon titles are like "Brand Name Product Type Feature, Compatible with..."
+                words = title.split()
+                # Skip brand-like first word if it's all caps or has special chars
+                clean_words = []
+                for w in words[:6]:
+                    if w.endswith(',') or w.endswith('，'):
+                        clean_words.append(w.rstrip(',，'))
+                        break
+                    clean_words.append(w)
+                title = ' '.join(clean_words[:4])  # Max 4 words
+
+                # Apply existing product filter
+                if _is_non_product_title(title):
+                    continue
+
+                # Extract percentage gain if available
+                pct_el = item.select_one('.zg-percent-change, .a-color-success')
+                pct_text = pct_el.get_text(strip=True) if pct_el else ""
+                pct_gain = 0
+                if pct_text:
+                    pct_match = re.search(r"(\d+)", pct_text.replace(",", ""))
+                    pct_gain = int(pct_match.group(1)) if pct_match else 0
+
+                # Strength: higher % gain = stronger signal
+                strength = min(pct_gain / 500, 1.0) if pct_gain > 0 else 0.4
+
+                signals.append({
+                    "source": "amazon",
+                    "product_keyword": title,
+                    "category": category,
+                    "raw_signal_strength": strength,
+                    "trend_velocity": "rising",
+                    "source_url": url,
+                    "signal_metadata": {
+                        "amazon_category": category,
+                        "pct_gain": pct_gain,
+                    },
+                })
+
+            time.sleep(2)  # Rate limit between categories
+
+        except Exception as e:
+            log.warning(f"Amazon {category} failed: {e}")
+            time.sleep(2)
+
+    if signals:
+        log.info(f"Amazon Movers: {len(signals)} product signals")
+    else:
+        log.info("Amazon Movers: no signals (may be blocked)")
+
+    return signals
+
+
+# ============================================================
 # Opportunity Analysis (LLM-powered classification)
 # ============================================================
 
@@ -707,6 +818,8 @@ def run_cycle(source: str) -> None:
         signals = scrape_google_trends()
     elif source == "reddit":
         signals = scrape_reddit()
+    elif source == "amazon":
+        signals = scrape_amazon_movers()
     else:
         log.error(f"Unknown source: {source}")
         return
@@ -726,10 +839,13 @@ def main() -> None:
     # Run initial scrape on startup
     run_cycle("reddit")
     time.sleep(5)
+    run_cycle("amazon")
+    time.sleep(5)
     run_cycle("google_trends")
 
-    # Then loop: Reddit every 30 min, Google Trends every 2 hours
+    # Then loop: Reddit every 30 min, Amazon every 30 min, Google Trends every 2 hours
     last_reddit = time.time()
+    last_amazon = time.time()
     last_gtrends = time.time()
 
     while True:
@@ -742,6 +858,14 @@ def main() -> None:
                 log.error(f"Reddit cycle crashed: {e}")
                 log_system_event("scout-light", "error", "error", f"Reddit cycle crash: {e}")
             last_reddit = time.time()
+
+        if now - last_amazon >= 1800:  # 30 min
+            try:
+                run_cycle("amazon")
+            except Exception as e:
+                log.error(f"Amazon cycle crashed: {e}")
+                log_system_event("scout-light", "error", "error", f"Amazon cycle crash: {e}")
+            last_amazon = time.time()
 
         if now - last_gtrends >= 7200:  # 2 hours
             try:
