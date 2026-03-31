@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/pnl', label: 'P&L', icon: '\u25C6' },
   { href: '/dashboard/training', label: 'Training', icon: '\u25CF' },
   { href: '/dashboard/system', label: 'System', icon: '\u25CB' },
+  { href: '/dashboard/ab', label: 'A/B Tests', icon: '\u25D0' },
   { href: '/dashboard/control', label: 'Control', icon: '\u2699' },
   { href: '/store', label: 'Store', icon: '\u25A3' },
 ];

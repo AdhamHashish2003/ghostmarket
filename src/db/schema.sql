@@ -324,6 +324,35 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_outcome ON llm_calls(outcome_quality);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_training ON llm_calls(included_in_training);
 
 -- ============================================================
+-- A/B TESTING
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ab_impressions (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    product_id TEXT NOT NULL REFERENCES products(id),
+    variant TEXT NOT NULL,           -- A, B, C
+    visitor_hash TEXT NOT NULL,      -- SHA-256 of IP (never store raw)
+    copy_approach TEXT               -- benefit, story, urgency
+);
+
+CREATE INDEX IF NOT EXISTS idx_ab_impressions_product ON ab_impressions(product_id);
+CREATE INDEX IF NOT EXISTS idx_ab_impressions_variant ON ab_impressions(product_id, variant);
+CREATE INDEX IF NOT EXISTS idx_ab_impressions_created ON ab_impressions(created_at);
+
+CREATE TABLE IF NOT EXISTS ab_clicks (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    impression_id TEXT NOT NULL REFERENCES ab_impressions(id),
+    product_id TEXT NOT NULL REFERENCES products(id),
+    variant TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ab_clicks_impression ON ab_clicks(impression_id);
+CREATE INDEX IF NOT EXISTS idx_ab_clicks_product ON ab_clicks(product_id);
+CREATE INDEX IF NOT EXISTS idx_ab_clicks_variant ON ab_clicks(product_id, variant);
+
+-- ============================================================
 -- TRAINING EXPORT VIEW (denormalized for ML)
 -- ============================================================
 
