@@ -49,6 +49,13 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 MIN_TRAINING_PAIRS = 50
 BASE_MODEL = "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
 
+# ROG GPU worker
+ROG_ENABLED = os.getenv("ROG_ENABLED", "false").lower() == "true"
+ROG_HOST = os.getenv("ROG_HOST", "192.168.1.100")
+ROG_PORT = os.getenv("ROG_PORT", "5555")
+ROG_SECRET = os.getenv("ROG_SECRET", "ghostmarket-rog-secret")
+ROG_BASE_URL = f"http://{ROG_HOST}:{ROG_PORT}"
+
 
 def _get_current_adapter_version() -> int:
     """Find the highest existing adapter version number."""
@@ -329,6 +336,40 @@ SYSTEM You are a GhostMarket e-commerce analysis assistant. You evaluate product
 # Main pipeline
 # ============================================================
 
+async def _dispatch_to_rog(pairs: list[dict], job_id: str) -> dict[str, Any]:
+    """Dispatch QLoRA job to ROG worker. Returns immediately (async callback on completion)."""
+    log.info(f"Dispatching QLoRA to ROG worker at {ROG_BASE_URL} (job_id={job_id})")
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{ROG_BASE_URL}/qlora",
+                headers={"X-Secret": ROG_SECRET, "Content-Type": "application/json"},
+                json={
+                    "job_id": job_id,
+                    "training_data": pairs,
+                    "epochs": 3,
+                    "batch_size": 2,
+                    "lora_r": 16,
+                    "lora_alpha": 32,
+                    "learning_rate": 2e-4,
+                    "callback_on_complete": True,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            log.info(f"ROG accepted job: {data}")
+            return {
+                "success": True,
+                "dispatched_to": "rog",
+                "job_id": job_id,
+                "status": "training_started_on_rog",
+                "training_pairs": len(pairs),
+            }
+    except Exception as e:
+        log.error(f"ROG dispatch failed: {e} — falling back to local training")
+        return {"dispatched_to": "rog", "success": False, "error": str(e)}
+
+
 async def run_qlora_training(data_path: str = "") -> dict[str, Any]:
     """Full QLoRA training pipeline. Called by /train command or biweekly cron."""
     log.info("Starting QLoRA fine-tuning pipeline")
@@ -339,6 +380,24 @@ async def run_qlora_training(data_path: str = "") -> dict[str, Any]:
         msg = f"Not enough training pairs ({len(pairs)}/{MIN_TRAINING_PAIRS})"
         log.info(msg)
         return {"skipped": True, "reason": msg, "pair_count": len(pairs)}
+
+    # ── ROG dispatch path ──────────────────────────────────────
+    if ROG_ENABLED:
+        import uuid
+        # Prepare training pairs (with flipped pairs) then send to ROG
+        try:
+            train_path, eval_path, total_pairs = await _prepare_training_data()
+            with open(train_path) as f:
+                all_pairs = [json.loads(line) for line in f]
+            job_id = f"qlora_{uuid.uuid4().hex[:8]}"
+            result = await _dispatch_to_rog(all_pairs, job_id)
+            if result.get("success"):
+                log_system_event("learner", "health_check", "info",
+                                 f"QLoRA dispatched to ROG: {job_id} ({total_pairs} pairs)")
+                return result
+            log.warning("ROG dispatch failed, falling back to local training")
+        except Exception as e:
+            log.warning(f"ROG prep/dispatch error: {e}, falling back to local training")
 
     current_version = _get_current_adapter_version()
     new_version = current_version + 1

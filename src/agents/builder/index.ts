@@ -296,6 +296,7 @@ const AD_FORMATS: Array<{ platform: AdPlatform; format: AdFormat }> = [
 async function generateAdCreatives(product: Product, brand: BrandKit, supplier: Supplier | null): Promise<string[]> {
   const creativeIds: string[] = [];
   const price = supplier?.estimated_retail || 24.99;
+  const db = getDb();
 
   // Generate 2 hook types × 3 formats = 6 creatives
   const selectedHooks = HOOK_TYPES.slice(0, 2);
@@ -327,7 +328,6 @@ Output JSON:
 
     for (const { platform, format } of AD_FORMATS) {
       const creativeId = uuid();
-      const db = getDb();
       withRetry(() => {
         db.prepare(`
           INSERT INTO ad_creatives (id, product_id, platform, format, hook_type, copy_text)
@@ -487,8 +487,9 @@ else:
     const postIds = await generateContentCalendar(parsedProduct, brandKit, supplier);
 
     // Update product
+    const dbUpdate = getDb();
     withRetry(() => {
-      db.prepare('UPDATE products SET brand_kit_id = ?, stage = ? WHERE id = ?')
+      dbUpdate.prepare('UPDATE products SET brand_kit_id = ?, stage = ? WHERE id = ?')
         .run(brandKitId, 'building', productId);
     });
 
@@ -533,7 +534,7 @@ else:
     console.error(`[Builder] Build failed for ${product.keyword}:`, errMsg);
     const db2 = getDb();
     withRetry(() => {
-      db2.prepare('UPDATE products SET stage = ? WHERE id = ?').run('build_failed', productId);
+      db2.prepare('UPDATE products SET stage = ? WHERE id = ?').run('killed', productId);
       db2.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'builder', 'error', 'error', ?)`)
         .run(uuid(), `Build failed for ${productId}: ${errMsg}`);
     });

@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/training', label: 'Training', icon: '\u25CF' },
   { href: '/dashboard/system', label: 'System', icon: '\u25CB' },
   { href: '/dashboard/control', label: 'Control', icon: '\u2699' },
+  { href: '/store', label: 'Store', icon: '\u25A3' },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
