@@ -1,15 +1,13 @@
 // GhostMarket Deployer Agent
-// Deploys landing pages to Vercel, schedules content to Buffer, adds UTM tracking
+// Saves landing pages locally, served via dashboard at /landing/{product_id}
+// Schedules content to Buffer, adds UTM tracking
 
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getDb, uuid, withRetry } from '../../shared/db.js';
 import type { Product, LandingPage, ContentPost } from '../../shared/types.js';
 
 const DATA_DIR = process.env.DATA_DIR || '/data';
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN || '';
-const VERCEL_SCOPE = process.env.VERCEL_ORG_ID || '';
 const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN || '';
 
 const BUFFER_PROFILE_IDS: Record<string, string> = {
@@ -19,21 +17,16 @@ const BUFFER_PROFILE_IDS: Record<string, string> = {
 };
 
 // ============================================================
-// Vercel Deployment
+// Local Landing Page Deployment
 // ============================================================
 
-async function deployToVercel(productId: string, landingPage: LandingPage): Promise<string | null> {
-  if (!VERCEL_TOKEN) {
-    console.log('[Deployer] VERCEL_TOKEN not set, skipping deploy');
-    return null;
-  }
-
+function deployLocally(productId: string, landingPage: LandingPage): string | null {
   if (!landingPage.html_path || !fs.existsSync(landingPage.html_path)) {
     console.error(`[Deployer] HTML file not found: ${landingPage.html_path}`);
     return null;
   }
 
-  // Create deploy directory with the landing page as index.html
+  // Create deploy directory
   const deployDir = path.join(DATA_DIR, 'deploy', productId, landingPage.variant_id);
   fs.mkdirSync(deployDir, { recursive: true });
   fs.copyFileSync(landingPage.html_path, path.join(deployDir, 'index.html'));
@@ -48,39 +41,18 @@ async function deployToVercel(productId: string, landingPage: LandingPage): Prom
     fs.writeFileSync(path.join(deployDir, 'index.html'), html);
   }
 
-  try {
-    const scopeFlag = VERCEL_SCOPE ? ` --scope ${VERCEL_SCOPE}` : '';
-    const result = execSync(
-      `vercel deploy --prod --yes --token=${VERCEL_TOKEN}${scopeFlag}`,
-      { cwd: deployDir, encoding: 'utf-8', timeout: 120000 },
-    ).trim();
+  // URL is the local dashboard route
+  const url = `/landing/${productId}`;
 
-    // Extract URL from output (last line is usually the URL)
-    const lines = result.split('\n');
-    const url = lines[lines.length - 1].trim();
+  // Update DB
+  const db = getDb();
+  withRetry(() => {
+    db.prepare('UPDATE landing_pages SET url = ?, deployed = 1 WHERE id = ?')
+      .run(url, landingPage.id);
+  });
 
-    if (url.startsWith('http')) {
-      // Update DB
-      const db = getDb();
-      withRetry(() => {
-        db.prepare('UPDATE landing_pages SET url = ?, deployed = 1 WHERE id = ?')
-          .run(url, landingPage.id);
-      });
-      console.log(`[Deployer] Deployed: ${url}`);
-      return url;
-    }
-
-    console.error('[Deployer] Unexpected Vercel output:', result);
-    return null;
-  } catch (err) {
-    console.error('[Deployer] Vercel deploy failed:', err);
-    const db = getDb();
-    withRetry(() => {
-      db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'deployer', 'error', 'error', ?)`)
-        .run(uuid(), `Vercel deploy failed for ${productId}: ${err}`);
-    });
-    return null;
-  }
+  console.log(`[Deployer] Deployed locally: ${url}`);
+  return url;
 }
 
 // ============================================================
@@ -88,12 +60,12 @@ async function deployToVercel(productId: string, landingPage: LandingPage): Prom
 // ============================================================
 
 function generateUTMLink(baseUrl: string, params: { source: string; medium: string; campaign: string; content?: string }): string {
-  const url = new URL(baseUrl);
+  const url = new URL(baseUrl, 'https://placeholder.com');
   url.searchParams.set('utm_source', params.source);
   url.searchParams.set('utm_medium', params.medium);
   url.searchParams.set('utm_campaign', params.campaign);
   if (params.content) url.searchParams.set('utm_content', params.content);
-  return url.toString();
+  return url.pathname + url.search;
 }
 
 // ============================================================
@@ -105,18 +77,15 @@ async function scheduleToBuffer(
   landingPageUrl: string,
   productKeyword: string,
 ): Promise<string | null> {
-  if (!BUFFER_ACCESS_TOKEN) {
-    console.log('[Deployer] BUFFER_ACCESS_TOKEN not set, skipping Buffer');
+  if (!BUFFER_ACCESS_TOKEN || BUFFER_ACCESS_TOKEN.startsWith('your_')) {
     return null;
   }
 
   const profileId = BUFFER_PROFILE_IDS[post.platform];
   if (!profileId) {
-    console.log(`[Deployer] No Buffer profile for platform: ${post.platform}`);
     return null;
   }
 
-  // Add UTM link to caption
   const utmUrl = generateUTMLink(landingPageUrl, {
     source: post.platform,
     medium: 'social',
@@ -139,8 +108,7 @@ async function scheduleToBuffer(
     });
 
     if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Buffer API error: ${resp.status} ${errText}`);
+      throw new Error(`Buffer API error: ${resp.status}`);
     }
 
     const data = await resp.json() as { updates?: Array<{ id: string }> };
@@ -152,17 +120,11 @@ async function scheduleToBuffer(
         db.prepare('UPDATE content_posts SET buffer_post_id = ?, utm_url = ? WHERE id = ?')
           .run(bufferId, utmUrl, post.id);
       });
-      console.log(`[Deployer] Scheduled to Buffer: ${bufferId}`);
     }
 
     return bufferId;
   } catch (err) {
     console.error(`[Deployer] Buffer scheduling failed:`, err);
-    const db = getDb();
-    withRetry(() => {
-      db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'deployer', 'api_failure', 'error', ?)`)
-        .run(uuid(), `Buffer failed: ${err}`);
-    });
     return null;
   }
 }
@@ -181,32 +143,32 @@ export async function deployProduct(productId: string): Promise<void> {
     return;
   }
 
-  // 1. Deploy best landing page variant to Vercel
+  // 1. Deploy best landing page variant locally
   const landingPages = db.prepare(
     'SELECT * FROM landing_pages WHERE product_id = ? ORDER BY variant_id'
   ).all(productId) as LandingPage[];
 
   let deployedUrl: string | null = null;
   for (const page of landingPages) {
-    const url = await deployToVercel(productId, page);
+    const url = deployLocally(productId, page);
     if (url) {
       deployedUrl = url;
-      break; // Deploy first variant, can A/B test later
+      break;
     }
   }
 
   if (!deployedUrl) {
-    console.log('[Deployer] No landing page deployed, skipping Buffer scheduling');
+    console.log('[Deployer] No landing page deployed');
     return;
   }
 
-  // Update product with landing page URL
+  // Update product with landing page URL and stage
   withRetry(() => {
     db.prepare('UPDATE products SET landing_page_url = ?, stage = ? WHERE id = ?')
       .run(deployedUrl, 'live', productId);
   });
 
-  // 2. Schedule content posts to Buffer
+  // 2. Schedule content posts to Buffer (if configured)
   const posts = db.prepare(
     'SELECT * FROM content_posts WHERE product_id = ? ORDER BY scheduled_at'
   ).all(productId) as ContentPost[];
@@ -215,7 +177,6 @@ export async function deployProduct(productId: string): Promise<void> {
   for (const post of posts) {
     const bufferId = await scheduleToBuffer(post, deployedUrl, product.keyword);
     if (bufferId) scheduledCount++;
-    // Buffer rate limit
     await new Promise(r => setTimeout(r, 1000));
   }
 
@@ -226,7 +187,7 @@ export async function deployProduct(productId: string): Promise<void> {
     db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message, metadata) VALUES (?, 'deployer', 'health_check', 'info', ?, ?)`)
       .run(
         uuid(),
-        `Product deployed: ${product.keyword}`,
+        `Product deployed locally: ${product.keyword} → ${deployedUrl}`,
         JSON.stringify({ product_id: productId, url: deployedUrl, posts_scheduled: scheduledCount }),
       );
   });
@@ -238,7 +199,6 @@ export async function deployProduct(productId: string): Promise<void> {
 
 async function processReadyProducts(): Promise<void> {
   const db = getDb();
-  // Products that are done building and need deployment
   const products = db.prepare(`
     SELECT p.id, p.keyword FROM products p
     WHERE p.stage = 'building'
@@ -258,10 +218,40 @@ async function processReadyProducts(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log('[Deployer] Agent starting');
+  console.log('[Deployer] Agent starting (local deployment mode)');
   const db = getDb();
+
+  // Buffer integration check
+  const bufferIsPlaceholder = !BUFFER_ACCESS_TOKEN || BUFFER_ACCESS_TOKEN.startsWith('your_');
+  if (bufferIsPlaceholder) {
+    console.warn('[Deployer] ⚠️ Buffer not configured — posts will be generated but not scheduled');
+    withRetry(() => {
+      db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'deployer', 'startup', 'warning', 'Buffer not configured — content calendar will be saved but posts will not be scheduled to social media')`)
+        .run(uuid());
+    });
+  } else {
+    try {
+      const resp = await fetch(`https://api.bufferapp.com/1/user.json?access_token=${BUFFER_ACCESS_TOKEN}`);
+      if (resp.ok) {
+        const user = await resp.json() as { name?: string };
+        console.log(`[Deployer] ✅ Buffer connected: ${user.name || 'unknown user'}`);
+        const profilesResp = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${BUFFER_ACCESS_TOKEN}`);
+        if (profilesResp.ok) {
+          const profiles = await profilesResp.json() as Array<{ service: string; formatted_username: string; id: string }>;
+          for (const p of profiles) {
+            console.log(`[Deployer]   Profile: ${p.service} — @${p.formatted_username} (${p.id})`);
+          }
+        }
+      } else {
+        console.warn(`[Deployer] ⚠️ Buffer token invalid (${resp.status}) — posts will not be scheduled`);
+      }
+    } catch (e) {
+      console.warn(`[Deployer] ⚠️ Buffer API check failed: ${e} — posts will not be scheduled`);
+    }
+  }
+
   withRetry(() => {
-    db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'deployer', 'startup', 'info', 'Deployer agent started')`)
+    db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'deployer', 'startup', 'info', 'Deployer agent started (local mode)')`)
       .run(uuid());
   });
 

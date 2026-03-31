@@ -10,7 +10,7 @@ interface ProductActionsProps {
 const ACTIONS = [
   { key: 'approve', label: 'APPROVE', color: '#00ff66', hoverBg: '#00ff6622', borderColor: '#00ff6644' },
   { key: 'skip', label: 'SKIP', color: '#888', hoverBg: '#88888822', borderColor: '#88888844' },
-  { key: 'rescore', label: 'RESCORE', color: '#00f0ff', hoverBg: '#00f0ff22', borderColor: '#00f0ff44' },
+  { key: 'rescore', label: 'RESCORE', color: '#00FFFF', hoverBg: '#00FFFF22', borderColor: '#00FFFF44' },
   { key: 'kill', label: 'KILL', color: '#ff3344', hoverBg: '#ff334422', borderColor: '#ff334444' },
 ] as const;
 
@@ -85,8 +85,8 @@ export default function ProductActions({ productId }: ProductActionsProps) {
           color: message.startsWith('Error') || message.startsWith('Failed')
             ? '#ff3344' : '#00ff66',
           padding: '6px 12px',
-          background: '#0d0d14',
-          border: '1px solid #1a1a24',
+          background: '#060608',
+          border: '1px solid #1a1a22',
           borderRadius: 6,
         }}>
           {message}

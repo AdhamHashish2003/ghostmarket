@@ -51,12 +51,12 @@ export default function TrainingDataPage() {
       <h2 style={{ fontSize: '1.1rem', marginBottom: 12 }}>Data Volume</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
         {tableCounts.map(t => (
-          <div key={t.t} style={{ background: '#1a1a24', padding: 16, borderRadius: 8, textAlign: 'center' }}>
+          <div key={t.t} style={{ background: '#1a1a22', padding: 16, borderRadius: 8, textAlign: 'center' }}>
             <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>{t.cnt.toLocaleString()}</div>
             <div style={{ fontSize: '0.75rem', color: '#888' }}>{t.t}</div>
           </div>
         ))}
-        <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, textAlign: 'center', border: '1px solid #8b5cf6' }}>
+        <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, textAlign: 'center', border: '1px solid #8b5cf6' }}>
           <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#8b5cf6' }}>{trainingExportCount}</div>
           <div style={{ fontSize: '0.75rem', color: '#888' }}>training_export rows</div>
         </div>
@@ -66,7 +66,7 @@ export default function TrainingDataPage() {
       <h2 style={{ fontSize: '1.1rem', marginBottom: 12 }}>Label Distribution</h2>
       <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
         {labelDistribution.map(l => (
-          <div key={l.outcome_label} style={{ background: '#1a1a24', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
+          <div key={l.outcome_label} style={{ background: '#1a1a22', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
               {l.outcome_label === 'win' ? '✅' : l.outcome_label === 'loss' ? '❌' : '➖'} {l.cnt}
             </div>
@@ -80,7 +80,7 @@ export default function TrainingDataPage() {
       <h2 style={{ fontSize: '1.1rem', marginBottom: 12 }}>QLoRA Training Data Quality</h2>
       <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
         {qloraStats.map(q => (
-          <div key={q.outcome_quality} style={{ background: '#1a1a24', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
+          <div key={q.outcome_quality} style={{ background: '#1a1a22', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: q.outcome_quality === 'keep' ? '#22c55e' : q.outcome_quality === 'flip' ? '#f59e0b' : '#888' }}>
               {q.cnt}
             </div>
@@ -102,7 +102,7 @@ export default function TrainingDataPage() {
         </thead>
         <tbody>
           {llmCallStats.map((l, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #1a1a24' }}>
+            <tr key={i} style={{ borderBottom: '1px solid #1a1a22' }}>
               <td style={{ padding: 8 }}>{l.task_type}</td>
               <td style={{ textAlign: 'center', padding: 8 }}>{l.cnt}</td>
               <td style={{ textAlign: 'center', padding: 8 }}>{l.avg_latency ? `${l.avg_latency.toFixed(0)}ms` : '-'}</td>
@@ -126,7 +126,7 @@ export default function TrainingDataPage() {
         </thead>
         <tbody>
           {recentLLMCalls.map((c, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #1a1a24' }}>
+            <tr key={i} style={{ borderBottom: '1px solid #1a1a22' }}>
               <td style={{ padding: 6 }}>{c.task_type as string}</td>
               <td style={{ padding: 6, color: '#888' }}>{(c.model_used as string)?.split('/').pop()}</td>
               <td style={{ textAlign: 'center', padding: 6 }}>{(c.tokens_in as number || 0) + (c.tokens_out as number || 0)}</td>

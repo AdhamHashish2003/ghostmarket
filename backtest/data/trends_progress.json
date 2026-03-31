@@ -1,0 +1,302 @@
+{
+  "aquarium": {
+    "trend_velocity": 1.9176,
+    "peak_to_current": 0.8925,
+    "current_interest": 89.25
+  },
+  "baking": {
+    "trend_velocity": -0.4011,
+    "peak_to_current": 0.5625,
+    "current_interest": 56.25
+  },
+  "band": {
+    "trend_velocity": 0.0549,
+    "peak_to_current": 0.835,
+    "current_interest": 83.5
+  },
+  "bird": {
+    "trend_velocity": 1.2582,
+    "peak_to_current": 0.815,
+    "current_interest": 81.5
+  },
+  "bluetooth": {
+    "trend_velocity": 1.2967,
+    "peak_to_current": 0.7675,
+    "current_interest": 76.75
+  },
+  "candle": {
+    "trend_velocity": -0.8077,
+    "peak_to_current": 0.3925,
+    "current_interest": 39.25
+  },
+  "car": {
+    "trend_velocity": 1.022,
+    "peak_to_current": 0.9225,
+    "current_interest": 92.25
+  },
+  "cat": {
+    "trend_velocity": 0.1648,
+    "peak_to_current": 0.92,
+    "current_interest": 92.0
+  },
+  "charger": {
+    "trend_velocity": 1.6813,
+    "peak_to_current": 0.8375,
+    "current_interest": 83.75
+  },
+  "chopper": {
+    "trend_velocity": 3.7033,
+    "peak_to_current": 0.9025,
+    "current_interest": 90.25
+  },
+  "coffee": {
+    "trend_velocity": 0.7363,
+    "peak_to_current": 0.795,
+    "current_interest": 79.5
+  },
+  "collar": {
+    "trend_velocity": 2.1593,
+    "peak_to_current": 0.795,
+    "current_interest": 79.5
+  },
+  "cooker": {
+    "trend_velocity": -0.5385,
+    "peak_to_current": 0.8175,
+    "current_interest": 81.75
+  },
+  "dash cam": {
+    "trend_velocity": 0.7857,
+    "peak_to_current": 0.4025,
+    "current_interest": 40.25
+  },
+  "decor": {
+    "trend_velocity": -0.511,
+    "peak_to_current": 0.585,
+    "current_interest": 58.5
+  },
+  "diffuser": {
+    "trend_velocity": 1.1044,
+    "peak_to_current": 0.84,
+    "current_interest": 84.0
+  },
+  "dog": {
+    "trend_velocity": 0.2802,
+    "peak_to_current": 0.88,
+    "current_interest": 88.0
+  },
+  "earbuds": {
+    "trend_velocity": 0.6648,
+    "peak_to_current": 0.6175,
+    "current_interest": 61.75
+  },
+  "exercise": {
+    "trend_velocity": -0.3462,
+    "peak_to_current": 0.825,
+    "current_interest": 82.5
+  },
+  "feeder": {
+    "trend_velocity": 2.2253,
+    "peak_to_current": 0.855,
+    "current_interest": 85.5
+  },
+  "fish": {
+    "trend_velocity": 1.9341,
+    "peak_to_current": 0.9475,
+    "current_interest": 94.75
+  },
+  "fryer": {
+    "trend_velocity": -0.4011,
+    "peak_to_current": 0.78,
+    "current_interest": 78.0
+  },
+  "gym": {
+    "trend_velocity": -1.4121,
+    "peak_to_current": 0.82,
+    "current_interest": 82.0
+  },
+  "hub": {
+    "trend_velocity": -0.1978,
+    "peak_to_current": 0.7875,
+    "current_interest": 78.75
+  },
+  "ice": {
+    "trend_velocity": -3.989,
+    "peak_to_current": 0.4075,
+    "current_interest": 40.75
+  },
+  "jump rope": {
+    "trend_velocity": 0.1758,
+    "peak_to_current": 0.59,
+    "current_interest": 59.0
+  },
+  "keyboard": {
+    "trend_velocity": 0.5495,
+    "peak_to_current": 0.8825,
+    "current_interest": 88.25
+  },
+  "knife": {
+    "trend_velocity": -0.1813,
+    "peak_to_current": 0.66,
+    "current_interest": 66.0
+  },
+  "lamp": {
+    "trend_velocity": 0.7033,
+    "peak_to_current": 0.805,
+    "current_interest": 80.5
+  },
+  "leash": {
+    "trend_velocity": 4.011,
+    "peak_to_current": 0.5925,
+    "current_interest": 59.25
+  },
+  "led": {
+    "trend_velocity": 0.6923,
+    "peak_to_current": 0.7975,
+    "current_interest": 79.75
+  },
+  "light": {
+    "trend_velocity": 0.2033,
+    "peak_to_current": 0.8525,
+    "current_interest": 85.25
+  },
+  "litter": {
+    "trend_velocity": 0.6099,
+    "peak_to_current": 0.83,
+    "current_interest": 83.0
+  },
+  "lunch box": {
+    "trend_velocity": -0.2912,
+    "peak_to_current": 0.42,
+    "current_interest": 42.0
+  },
+  "massage": {
+    "trend_velocity": -0.1264,
+    "peak_to_current": 0.64,
+    "current_interest": 64.0
+  },
+  "mouse": {
+    "trend_velocity": 0.4615,
+    "peak_to_current": 0.935,
+    "current_interest": 93.5
+  },
+  "neon": {
+    "trend_velocity": 1.7747,
+    "peak_to_current": 0.905,
+    "current_interest": 90.5
+  },
+  "pet": {
+    "trend_velocity": 0.4725,
+    "peak_to_current": 0.89,
+    "current_interest": 89.0
+  },
+  "phone": {
+    "trend_velocity": -1.3681,
+    "peak_to_current": 0.7875,
+    "current_interest": 78.75
+  },
+  "press": {
+    "trend_velocity": -1.478,
+    "peak_to_current": 0.615,
+    "current_interest": 61.5
+  },
+  "projector": {
+    "trend_velocity": -0.6593,
+    "peak_to_current": 0.555,
+    "current_interest": 55.5
+  },
+  "resistance": {
+    "trend_velocity": 0.4945,
+    "peak_to_current": 0.705,
+    "current_interest": 70.5
+  },
+  "roller": {
+    "trend_velocity": 1.4396,
+    "peak_to_current": 0.9225,
+    "current_interest": 92.25
+  },
+  "seat": {
+    "trend_velocity": 1.6868,
+    "peak_to_current": 0.8775,
+    "current_interest": 87.75
+  },
+  "shelf": {
+    "trend_velocity": 0.2143,
+    "peak_to_current": 0.3425,
+    "current_interest": 34.25
+  },
+  "speaker": {
+    "trend_velocity": 1.5,
+    "peak_to_current": 0.82,
+    "current_interest": 82.0
+  },
+  "spice": {
+    "trend_velocity": -0.5934,
+    "peak_to_current": 0.605,
+    "current_interest": 60.5
+  },
+  "stand": {
+    "trend_velocity": 0.9945,
+    "peak_to_current": 0.95,
+    "current_interest": 95.0
+  },
+  "steering": {
+    "trend_velocity": 1.2033,
+    "peak_to_current": 0.9175,
+    "current_interest": 91.75
+  },
+  "sun shade": {
+    "trend_velocity": 5.989,
+    "peak_to_current": 0.7325,
+    "current_interest": 73.25
+  },
+  "tire": {
+    "trend_velocity": 0.5165,
+    "peak_to_current": 0.835,
+    "current_interest": 83.5
+  },
+  "trunk": {
+    "trend_velocity": 0.7692,
+    "peak_to_current": 0.375,
+    "current_interest": 37.5
+  },
+  "usb": {
+    "trend_velocity": 0.6923,
+    "peak_to_current": 0.88,
+    "current_interest": 88.0
+  },
+  "vacuum": {
+    "trend_velocity": 2.1209,
+    "peak_to_current": 0.79,
+    "current_interest": 79.0
+  },
+  "wall art": {
+    "trend_velocity": 0.0934,
+    "peak_to_current": 0.315,
+    "current_interest": 31.5
+  },
+  "webcam": {
+    "trend_velocity": -1.0659,
+    "peak_to_current": 0.4325,
+    "current_interest": 43.25
+  },
+  "weight": {
+    "trend_velocity": 0.5,
+    "peak_to_current": 0.91,
+    "current_interest": 91.0
+  },
+  "wireless": {
+    "trend_velocity": 1.467,
+    "peak_to_current": 0.7625,
+    "current_interest": 76.25
+  },
+  "workout": {
+    "trend_velocity": -1.6923,
+    "peak_to_current": 0.8,
+    "current_interest": 80.0
+  },
+  "yoga": {
+    "trend_velocity": -0.0604,
+    "peak_to_current": 0.505,
+    "current_interest": 50.5
+  }
+}

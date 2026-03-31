@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Database from 'better-sqlite3';
 import path from 'path';
+import { isLocal, proxyToOrchestrator } from '@/lib/api-proxy';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ function getDb(): Database.Database {
 }
 
 export async function GET() {
+  if (!isLocal()) return proxyToOrchestrator('/api/pipeline');
   let db: Database.Database | null = null;
   try {
     db = getDb();

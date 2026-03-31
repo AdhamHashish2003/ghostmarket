@@ -279,7 +279,10 @@ async function callWithFailover(
     logFailover('gemini', 'nim', msg);
   }
 
-  // Try NIM
+  // Try NIM — skip if not configured
+  if (!process.env.NIM_API_KEY) {
+    throw new Error('All LLM providers exhausted (Groq rate-limited, Gemini rate-limited, NIM not configured)');
+  }
   return callNIM(prompt, systemPrompt, temperature, maxTokens);
 }
 

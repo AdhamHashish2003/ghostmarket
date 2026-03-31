@@ -6,7 +6,7 @@ import NeuralMesh from '@/components/NeuralMesh';
 export const metadata: Metadata = {
   title: 'GhostMarket — Neural Warfare',
   description: 'Autonomous E-Commerce Command & Control',
-  themeColor: '#0a0a0f',
+  themeColor: '#000000',
 };
 
 const NAV_ITEMS = [
@@ -27,22 +27,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
           rel="stylesheet"
         />
-        <meta name="theme-color" content="#0a0a0f" />
+        <meta name="theme-color" content="#000000" />
+        <meta httpEquiv="refresh" content="60" />
       </head>
       <body style={{
         margin: 0,
-        fontFamily: "'Inter', 'JetBrains Mono', -apple-system, BlinkMacSystemFont, sans-serif",
-        background: '#0a0a0f',
+        fontFamily: "'JetBrains Mono', 'Inter', -apple-system, BlinkMacSystemFont, monospace",
+        background: '#000000',
         color: '#e0e0e0',
       }}>
         <NeuralMesh />
-        <div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+        <div id="gm-shell" style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
           {/* Sidebar */}
-          <nav style={{
+          <nav id="gm-sidebar" style={{
             width: 200,
             minWidth: 200,
-            background: '#111118',
-            borderRight: '1px solid #1a1a24',
+            background: '#050508',
+            borderRight: '1px solid #00FFFF18',
             display: 'flex',
             flexDirection: 'column',
             position: 'fixed',
@@ -54,21 +55,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Logo */}
             <div style={{
               padding: '24px 20px 20px',
-              borderBottom: '1px solid #1a1a24',
+              borderBottom: '1px solid #00FFFF18',
             }}>
               <div style={{
                 fontSize: '1.1rem',
                 fontWeight: 700,
                 fontFamily: "'JetBrains Mono', monospace",
-                color: '#00f0ff',
-                textShadow: '0 0 20px #00f0ff66, 0 0 40px #00f0ff22',
+                color: '#00FFFF',
+                textShadow: '0 0 20px #00FFFF44, 0 0 40px #00FFFF18',
                 letterSpacing: '0.05em',
               }}>
-                GHOST<span style={{ color: '#ff00aa' }}>MARKET</span>
+                GHOST<span style={{ color: '#FF6B00' }}>MARKET</span>
               </div>
               <div style={{
                 fontSize: '0.55rem',
-                color: '#666',
+                color: '#444',
                 fontFamily: "'JetBrains Mono', monospace",
                 letterSpacing: '0.15em',
                 marginTop: 4,
@@ -89,7 +90,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     alignItems: 'center',
                     gap: 10,
                     padding: '10px 20px',
-                    color: '#888',
+                    color: '#777',
                     textDecoration: 'none',
                     fontSize: '0.82rem',
                     fontFamily: "'JetBrains Mono', monospace",
@@ -97,7 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     borderLeft: '2px solid transparent',
                   }}
                 >
-                  <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{item.icon}</span>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.5, color: '#FF6B00' }}>{item.icon}</span>
                   {item.label}
                 </Link>
               ))}
@@ -106,7 +107,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Bottom status */}
             <div style={{
               padding: '12px 20px',
-              borderTop: '1px solid #1a1a24',
+              borderTop: '1px solid #00FFFF18',
               fontSize: '0.6rem',
               color: '#333',
               fontFamily: "'JetBrains Mono', monospace",
@@ -120,13 +121,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   boxShadow: '0 0 6px #00ff6688',
                   display: 'inline-block',
                 }} />
-                <span style={{ color: '#555' }}>SYSTEM ONLINE</span>
+                <span style={{ color: '#444' }}>SYSTEM ONLINE</span>
               </div>
             </div>
           </nav>
 
           {/* Main content */}
-          <main style={{
+          <main id="gm-main" style={{
             flex: 1,
             marginLeft: 200,
             padding: 28,

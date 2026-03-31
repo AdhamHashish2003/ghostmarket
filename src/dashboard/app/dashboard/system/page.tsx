@@ -1,5 +1,4 @@
-import { getDb } from '@/lib/db';
-import fs from 'fs';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,66 +8,94 @@ const KNOWN_AGENTS = [
   'learner', 'telegram', 'image-proc', 'llm', 'rog-worker',
 ];
 
-export default function SystemPage() {
-  const db = getDb();
-
-  // Agent status (last event per agent)
-  const agentStatus = db.prepare(`
-    SELECT agent, event_type, severity, message, MAX(created_at) as last_seen
-    FROM system_events GROUP BY agent ORDER BY last_seen DESC
-  `).all() as Array<{
+export default async function SystemPage() {
+  let agentStatus: Array<{
     agent: string;
     event_type: string;
     severity: string;
     message: string;
     last_seen: string;
-  }>;
-
-  // Error count per agent (24h)
-  const errorCounts = db.prepare(`
-    SELECT agent, COUNT(*) as errors FROM system_events
-    WHERE severity IN ('error', 'critical') AND created_at > datetime('now', '-24 hours')
-    GROUP BY agent
-  `).all() as Array<{ agent: string; errors: number }>;
-  const errorMap: Record<string, number> = {};
-  for (const e of errorCounts) {
-    errorMap[e.agent] = e.errors;
-  }
-
-  // Recent errors
-  const recentErrors = db.prepare(`
-    SELECT id, agent, event_type, severity, message, created_at FROM system_events
-    WHERE severity IN ('error', 'critical') ORDER BY created_at DESC LIMIT 30
-  `).all() as Array<{
+  }> = [];
+  let errorCounts: Array<{ agent: string; errors: number }> = [];
+  let recentErrors: Array<{
     id: number;
     agent: string;
     event_type: string;
     severity: string;
     message: string;
     created_at: string;
-  }>;
+  }> = [];
+  let dbSize = 'N/A';
+  let tableCounts: Array<{ tbl: string; cnt: number }> = [];
 
-  // DB size
-  const dbPath = process.env.GHOSTMARKET_DB || '/mnt/c/Users/Adham/ghostmarket/data/ghostmarket.db';
-  let dbSizeBytes = 0;
-  try {
-    const stat = fs.statSync(dbPath);
-    dbSizeBytes = stat.size;
-  } catch { /* ok */ }
-  const dbSize = dbSizeBytes > 0
-    ? dbSizeBytes >= 1048576
-      ? `${(dbSizeBytes / 1048576).toFixed(1)} MB`
-      : `${(dbSizeBytes / 1024).toFixed(0)} KB`
-    : 'N/A';
+  if (canUseLocalDb()) {
+    const { getDb } = await import('@/lib/db');
+    const fs = await import('fs');
+    const db = getDb();
 
-  // Table counts
-  const tableCounts = db.prepare(`
-    SELECT 'products' as tbl, COUNT(*) as cnt FROM products
-    UNION ALL SELECT 'trend_signals', COUNT(*) FROM trend_signals
-    UNION ALL SELECT 'suppliers', COUNT(*) FROM suppliers
-    UNION ALL SELECT 'llm_calls', COUNT(*) FROM llm_calls
-    UNION ALL SELECT 'system_events', COUNT(*) FROM system_events
-  `).all() as Array<{ tbl: string; cnt: number }>;
+    // Agent status (last event per agent)
+    agentStatus = db.prepare(`
+      SELECT agent, event_type, severity, message, MAX(created_at) as last_seen
+      FROM system_events GROUP BY agent ORDER BY last_seen DESC
+    `).all() as typeof agentStatus;
+
+    // Error count per agent (24h)
+    errorCounts = db.prepare(`
+      SELECT agent, COUNT(*) as errors FROM system_events
+      WHERE severity IN ('error', 'critical') AND created_at > datetime('now', '-24 hours')
+      GROUP BY agent
+    `).all() as typeof errorCounts;
+
+    // Recent errors
+    recentErrors = db.prepare(`
+      SELECT id, agent, event_type, severity, message, created_at FROM system_events
+      WHERE severity IN ('error', 'critical') ORDER BY created_at DESC LIMIT 30
+    `).all() as typeof recentErrors;
+
+    // DB size
+    const dbPath = process.env.GHOSTMARKET_DB || '/mnt/c/Users/Adham/ghostmarket/data/ghostmarket.db';
+    let dbSizeBytes = 0;
+    try {
+      const stat = fs.statSync(dbPath);
+      dbSizeBytes = stat.size;
+    } catch { /* ok */ }
+    dbSize = dbSizeBytes > 0
+      ? dbSizeBytes >= 1048576
+        ? `${(dbSizeBytes / 1048576).toFixed(1)} MB`
+        : `${(dbSizeBytes / 1024).toFixed(0)} KB`
+      : 'N/A';
+
+    // Table counts
+    tableCounts = db.prepare(`
+      SELECT 'products' as tbl, COUNT(*) as cnt FROM products
+      UNION ALL SELECT 'trend_signals', COUNT(*) FROM trend_signals
+      UNION ALL SELECT 'suppliers', COUNT(*) FROM suppliers
+      UNION ALL SELECT 'llm_calls', COUNT(*) FROM llm_calls
+      UNION ALL SELECT 'system_events', COUNT(*) FROM system_events
+    `).all() as typeof tableCounts;
+  } else {
+    const data = await fetchOrchestrator<{
+      paused: boolean;
+      agentHealth: typeof agentStatus;
+      recentErrors: typeof recentErrors;
+      dbStats: { size: string; tables: typeof tableCounts };
+      eventCounts: typeof errorCounts;
+      unresolvedCount: number;
+    }>('/api/system');
+
+    agentStatus = data.agentHealth || [];
+    recentErrors = data.recentErrors || [];
+    errorCounts = data.eventCounts || [];
+    if (data.dbStats) {
+      dbSize = data.dbStats.size || 'N/A';
+      tableCounts = data.dbStats.tables || [];
+    }
+  }
+
+  const errorMap: Record<string, number> = {};
+  for (const e of errorCounts) {
+    errorMap[e.agent] = e.errors;
+  }
 
   // Build unique agent list (known + any from DB)
   const allAgents = [...new Set([...KNOWN_AGENTS, ...agentStatus.map(a => a.agent)])];
@@ -78,7 +105,7 @@ export default function SystemPage() {
   }
 
   const severityColors: Record<string, string> = {
-    info: '#00f0ff',
+    info: '#00FFFF',
     warning: '#ffaa00',
     error: '#ff3344',
     critical: '#ff3344',
@@ -124,14 +151,14 @@ export default function SystemPage() {
             const agentErrors = errorMap[agentName] || 0;
 
             let dotColor = '#333';
-            let borderColor = '#1a1a24';
+            let borderColor = '#1a1a22';
             if (agentErrors > 0) { dotColor = '#ff3344'; borderColor = '#ff334433'; }
             else if (isRecent) { dotColor = '#00ff66'; borderColor = '#00ff6633'; }
             else if (isStale) { dotColor = '#ffaa00'; borderColor = '#ffaa0033'; }
 
             return (
               <div key={agentName} style={{
-                background: '#111118',
+                background: '#08080c',
                 border: `1px solid ${borderColor}`,
                 borderRadius: 8,
                 padding: '12px 14px',
@@ -200,8 +227,8 @@ export default function SystemPage() {
         <div>
           <SectionLabel>Database</SectionLabel>
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             padding: '20px',
             textAlign: 'center',
@@ -210,8 +237,8 @@ export default function SystemPage() {
               fontSize: '1.5rem',
               fontWeight: 700,
               fontFamily: "'JetBrains Mono', monospace",
-              color: '#00f0ff',
-              textShadow: '0 0 12px #00f0ff33',
+              color: '#00FFFF',
+              textShadow: '0 0 12px #00FFFF33',
             }}>
               {dbSize}
             </div>
@@ -234,12 +261,12 @@ export default function SystemPage() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '6px 10px',
-                borderBottom: '1px solid #1a1a2444',
+                borderBottom: '1px solid #1a1a2244',
                 fontSize: '0.7rem',
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
                 <span style={{ color: '#888' }}>{t.tbl}</span>
-                <span style={{ color: '#00f0ff', fontWeight: 600 }}>{t.cnt.toLocaleString()}</span>
+                <span style={{ color: '#00FFFF', fontWeight: 600 }}>{t.cnt.toLocaleString()}</span>
               </div>
             ))}
           </div>
@@ -249,8 +276,8 @@ export default function SystemPage() {
           <SectionLabel>Error Summary (24h)</SectionLabel>
           {errorCounts.length > 0 ? (
             <div style={{
-              background: '#111118',
-              border: '1px solid #1a1a24',
+              background: '#08080c',
+              border: '1px solid #1a1a22',
               borderRadius: 8,
               overflow: 'hidden',
             }}>
@@ -261,15 +288,15 @@ export default function SystemPage() {
                 fontSize: '0.75rem',
               }}>
                 <thead>
-                  <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                  <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                     <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Agent</th>
                     <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Errors</th>
                   </tr>
                 </thead>
                 <tbody>
                   {errorCounts.map(e => (
-                    <tr key={e.agent} style={{ borderBottom: '1px solid #1a1a2444' }}>
-                      <td style={{ padding: '8px 14px', color: '#ff00aa', fontWeight: 600 }}>{e.agent}</td>
+                    <tr key={e.agent} style={{ borderBottom: '1px solid #1a1a2244' }}>
+                      <td style={{ padding: '8px 14px', color: '#FF6B00', fontWeight: 600 }}>{e.agent}</td>
                       <td style={{ padding: '8px 14px', textAlign: 'center', color: '#ff3344', fontWeight: 700 }}>{e.errors}</td>
                     </tr>
                   ))}
@@ -278,8 +305,8 @@ export default function SystemPage() {
             </div>
           ) : (
             <div style={{
-              background: '#111118',
-              border: '1px solid #1a1a24',
+              background: '#08080c',
+              border: '1px solid #1a1a22',
               borderRadius: 8,
               padding: '30px 20px',
               textAlign: 'center',
@@ -313,8 +340,8 @@ export default function SystemPage() {
         </SectionLabel>
         {recentErrors.length > 0 ? (
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             overflow: 'hidden',
           }}>
@@ -325,7 +352,7 @@ export default function SystemPage() {
               fontSize: '0.75rem',
             }}>
               <thead>
-                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Time</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Severity</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Agent</th>
@@ -336,7 +363,7 @@ export default function SystemPage() {
                 {recentErrors.map(err => {
                   const sevColor = severityColors[err.severity] || '#666';
                   return (
-                    <tr key={err.id} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                    <tr key={err.id} style={{ borderBottom: '1px solid #1a1a2244' }}>
                       <td style={{ padding: '8px 14px', color: '#666', fontSize: '0.65rem' }}>
                         {err.created_at ? new Date(err.created_at).toLocaleString() : '-'}
                       </td>
@@ -354,7 +381,7 @@ export default function SystemPage() {
                           {err.severity}
                         </span>
                       </td>
-                      <td style={{ padding: '8px 14px', color: '#ff00aa', fontWeight: 600 }}>
+                      <td style={{ padding: '8px 14px', color: '#FF6B00', fontWeight: 600 }}>
                         {err.agent}
                       </td>
                       <td style={{ padding: '8px 14px', color: '#aaa', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -368,8 +395,8 @@ export default function SystemPage() {
           </div>
         ) : (
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             padding: '30px 20px',
             textAlign: 'center',

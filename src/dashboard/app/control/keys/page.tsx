@@ -45,7 +45,7 @@ export default function KeysPage() {
       <div style={{ display: 'grid', gap: 8 }}>
         {results.map(r => (
           <div key={r.name} style={{
-            background: '#1a1a24', padding: 16, borderRadius: 8, display: 'flex',
+            background: '#1a1a22', padding: 16, borderRadius: 8, display: 'flex',
             alignItems: 'center', gap: 16,
             borderLeft: `4px solid ${r.status === 'ok' ? '#22c55e' : r.status === 'error' ? '#ef4444' : '#6b7280'}`,
           }}>

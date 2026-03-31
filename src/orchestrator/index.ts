@@ -4,7 +4,7 @@
 
 import express from 'express';
 import cron from 'node-cron';
-import { execSync } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { getDb, uuid, withRetry } from '../shared/db.js';
 import type { ROGWorkerResult } from '../shared/types.js';
 import { EventEmitter } from 'events';
@@ -23,6 +23,7 @@ app.use((_req, res, next) => {
 
 const PORT = Number(process.env.PORT) || 4000;
 const ROG_WORKER_URL = process.env.ROG_WORKER_URL || 'http://localhost:8500';
+const ROG_ENABLED = process.env.ROG_ENABLED === 'true';
 
 // Internal event bus for same-machine agent coordination
 const eventBus = new EventEmitter();
@@ -123,45 +124,141 @@ app.post('/trigger/learn', (_req, res) => {
   res.json({ triggered: 'learner' });
 });
 
-// Trigger Scout: runs light_sources.py, returns signal count
-app.post('/trigger/scout', async (_req, res) => {
-  if (paused) { res.json({ skipped: 'paused' }); return; }
+// Human actions API
+app.get('/api/human-actions', (_req, res) => {
   try {
-    logEvent('orchestrator', 'health_check', 'info', 'Triggering scout via /trigger/scout');
-    execSync('python3 src/agents/scout/light_sources.py', {
-      cwd: process.cwd(),
-      env: { ...process.env },
-      timeout: 120000,
-      stdio: 'pipe',
-    });
     const db = getDb();
-    const signalCount = (db.prepare('SELECT COUNT(*) as c FROM trend_signals').get() as { c: number }).c;
-    res.json({ triggered: 'scout', signals: signalCount });
+    const pending = db.prepare("SELECT * FROM human_actions WHERE status = 'pending' ORDER BY created_at DESC").all();
+    const recent = db.prepare("SELECT * FROM human_actions ORDER BY created_at DESC LIMIT 20").all();
+    res.json({ pending, recent });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logEvent('orchestrator', 'api_failure', 'error', `Scout trigger failed: ${msg}`);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: String(e) });
   }
 });
 
-// Trigger Scorer: runs scorer/main.py, returns scored count
+app.post('/api/human-actions/:id/complete', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { data } = req.body as { data?: string };
+    db.prepare("UPDATE human_actions SET status = 'completed', completed_at = datetime('now'), operator_data = ? WHERE id = ? OR id LIKE ?")
+      .run(data || null, id, `${id}%`);
+    const action = db.prepare("SELECT * FROM human_actions WHERE id = ? OR id LIKE ?").get(id, `${id}%`) as { product_id: string | null } | undefined;
+    if (action?.product_id) {
+      db.prepare("UPDATE products SET stage = 'building' WHERE id = ? AND stage = 'waiting_human'").run(action.product_id);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.post('/api/human-actions/:id/skip', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    db.prepare("UPDATE human_actions SET status = 'skipped', completed_at = datetime('now') WHERE id = ? OR id LIKE ?")
+      .run(id, `${id}%`);
+    const action = db.prepare("SELECT * FROM human_actions WHERE id = ? OR id LIKE ?").get(id, `${id}%`) as { product_id: string | null } | undefined;
+    if (action?.product_id) {
+      db.prepare("UPDATE products SET stage = 'building' WHERE id = ? AND stage = 'waiting_human'").run(action.product_id);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Manual report triggers (for testing)
+app.post('/trigger/daily-report', async (_req, res) => {
+  try {
+    const report = await generateDailyReport();
+    await sendTelegram(report);
+    res.json({ sent: true, report });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+app.post('/trigger/weekly-report', async (_req, res) => {
+  try {
+    const report = await generateWeeklyReport();
+    await sendTelegram(report);
+    res.json({ sent: true, report });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Trigger Scout: runs light_sources.py in background, responds immediately
+app.post('/trigger/scout', async (_req, res) => {
+  if (paused) { res.json({ skipped: 'paused' }); return; }
+  logEvent('orchestrator', 'health_check', 'info', 'Triggering scout via /trigger/scout');
+  const db = getDb();
+  const signalsBefore = (db.prepare('SELECT COUNT(*) as c FROM trend_signals').get() as { c: number }).c;
+
+  // Respond immediately — scout runs in background
+  res.json({ triggered: 'scout', status: 'running', signals_before: signalsBefore });
+
+  // Run scout asynchronously
+  exec('python3 src/agents/scout/light_sources.py', {
+    cwd: process.cwd(),
+    env: { ...process.env, PYTHONPATH: `${process.cwd()}/src` },
+    timeout: 120000,
+  }, (error, _stdout, _stderr) => {
+    const signalsAfter = (getDb().prepare('SELECT COUNT(*) as c FROM trend_signals').get() as { c: number }).c;
+    const newSignals = signalsAfter - signalsBefore;
+    if (error) {
+      logEvent('orchestrator', 'api_failure', 'warning', `Scout finished with error: ${error.message.substring(0, 200)}`);
+    } else {
+      logEvent('orchestrator', 'health_check', 'info', `Scout complete: ${newSignals} new signals (${signalsAfter} total)`);
+    }
+    // Emit event so Telegram /start can pick up the result
+    eventBus.emit('scout:complete', { success: !error, signals: signalsAfter, newSignals });
+  });
+});
+
+// Trigger Scorer: runs scorer/main.py in background, responds immediately
 app.post('/trigger/scorer', async (_req, res) => {
   if (paused) { res.json({ skipped: 'paused' }); return; }
+  logEvent('orchestrator', 'health_check', 'info', 'Triggering scorer via /trigger/scorer');
+  const db = getDb();
+  const scoredBefore = (db.prepare("SELECT COUNT(*) as c FROM products WHERE stage = 'scored'").get() as { c: number }).c;
+
+  // Respond immediately
+  res.json({ triggered: 'scorer', status: 'running', scored_before: scoredBefore });
+
+  // Run scorer asynchronously
+  exec('python3 src/agents/scorer/main.py', {
+    cwd: process.cwd(),
+    env: { ...process.env, PYTHONPATH: `${process.cwd()}/src` },
+    timeout: 120000,
+  }, (error, _stdout, _stderr) => {
+    const scoredAfter = (getDb().prepare("SELECT COUNT(*) as c FROM products WHERE stage = 'scored'").get() as { c: number }).c;
+    if (error) {
+      logEvent('orchestrator', 'api_failure', 'warning', `Scorer finished with error: ${error.message.substring(0, 200)}`);
+    } else {
+      logEvent('orchestrator', 'health_check', 'info', `Scorer complete: ${scoredAfter} products scored`);
+    }
+    eventBus.emit('scorer:complete', { success: !error, scored: scoredAfter });
+  });
+});
+
+// Serve landing page HTML from database
+app.get('/api/landing/:id', (req, res) => {
   try {
-    logEvent('orchestrator', 'health_check', 'info', 'Triggering scorer via /trigger/scorer');
-    execSync('python3 src/agents/scorer/main.py', {
-      cwd: process.cwd(),
-      env: { ...process.env },
-      timeout: 120000,
-      stdio: 'pipe',
-    });
     const db = getDb();
-    const scoredCount = (db.prepare("SELECT COUNT(*) as c FROM products WHERE stage = 'scored'").get() as { c: number }).c;
-    res.json({ triggered: 'scorer', scored: scoredCount });
+    const page = db.prepare(
+      'SELECT html_content FROM landing_pages WHERE product_id = ? AND html_content IS NOT NULL ORDER BY variant_id LIMIT 1'
+    ).get(req.params.id) as { html_content: string } | undefined;
+
+    if (page?.html_content) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(page.html_content);
+    } else {
+      res.status(404).json({ error: 'Landing page not found' });
+    }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logEvent('orchestrator', 'api_failure', 'error', `Scorer trigger failed: ${msg}`);
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: String(e) });
   }
 });
 
@@ -621,6 +718,148 @@ app.get('/api/events/stream', (req, res) => {
 // Cron Schedules (staggered — not all at once)
 // ============================================================
 
+// ============================================================
+// Automated Telegram Reports
+// ============================================================
+
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+
+async function sendTelegram(text: string): Promise<void> {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text }),
+    });
+  } catch (e) {
+    console.error('[Orchestrator] Telegram send failed:', e);
+  }
+}
+
+async function generateDailyReport(): Promise<string> {
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  const stages = db.prepare('SELECT stage, COUNT(*) as c FROM products GROUP BY stage').all() as Array<{ stage: string; c: number }>;
+  const stageMap: Record<string, number> = {};
+  let total = 0;
+  for (const s of stages) { stageMap[s.stage] = s.c; total += s.c; }
+
+  const labeled = (db.prepare("SELECT COUNT(*) as c FROM products WHERE outcome_label IS NOT NULL").get() as { c: number }).c;
+  const llmCalls = (db.prepare("SELECT COUNT(*) as c FROM llm_calls").get() as { c: number }).c;
+  const errors24h = (db.prepare("SELECT COUNT(*) as c FROM system_events WHERE severity IN ('error','critical') AND created_at > datetime('now', '-24 hours')").get() as { c: number }).c;
+  const discovered24h = (db.prepare("SELECT COUNT(*) as c FROM products WHERE created_at > datetime('now', '-24 hours')").get() as { c: number }).c;
+  const avgScore = (db.prepare("SELECT ROUND(AVG(score), 1) as avg FROM products WHERE score IS NOT NULL").get() as { avg: number | null }).avg || 0;
+  const reviewZone = (db.prepare("SELECT COUNT(*) as c FROM products WHERE score >= 50 AND score < 60 AND stage = 'scored'").get() as { c: number }).c;
+  const throughput24h = (db.prepare("SELECT COUNT(*) as c FROM products WHERE stage NOT IN ('discovered') AND updated_at > datetime('now', '-24 hours')").get() as { c: number }).c;
+
+  const topProducts = db.prepare(`
+    SELECT keyword, score, decision, stage FROM products
+    WHERE score IS NOT NULL ORDER BY score DESC LIMIT 3
+  `).all() as Array<{ keyword: string; score: number; decision: string | null; stage: string }>;
+
+  const liveProducts = db.prepare(`
+    SELECT keyword, landing_page_url FROM products
+    WHERE stage IN ('live','tracking') AND landing_page_url IS NOT NULL LIMIT 3
+  `).all() as Array<{ keyword: string; landing_page_url: string }>;
+
+  let msg = `📊 DAILY BRIEFING — ${dayName}\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  msg += `📦 ${discovered24h} new products (24h) | ${total} total\n`;
+  msg += `📊 ${stageMap['scored'] || 0} scored | ✅ ${stageMap['approved'] || 0} approved | 🟢 ${(stageMap['live'] || 0) + (stageMap['tracking'] || 0)} live\n`;
+  msg += `🏗️ ${stageMap['building'] || 0} building | ⏭️ ${stageMap['skipped'] || 0} skipped\n`;
+  msg += `⚡ ${throughput24h} processed (24h) | Avg score: ${avgScore}\n\n`;
+
+  if (topProducts.length > 0) {
+    msg += `Top 3:\n`;
+    for (const p of topProducts) {
+      const emoji = p.stage === 'tracking' || p.stage === 'live' ? '🟢' : p.decision === 'recommend' ? '🎯' : '📦';
+      msg += `${emoji} ${p.keyword} — ${p.score} (${p.stage})\n`;
+    }
+    msg += '\n';
+  }
+
+  if (liveProducts.length > 0) {
+    msg += `Live:\n`;
+    for (const p of liveProducts) {
+      msg += `🔗 ${p.keyword}: ${p.landing_page_url}\n`;
+    }
+    msg += '\n';
+  }
+
+  if (reviewZone > 0) {
+    msg += `🔍 ${reviewZone} products in review zone (50-59)\n`;
+  }
+
+  msg += `🧠 ${labeled}/50 labeled | ${llmCalls} LLM calls\n`;
+
+  const pendingActions = (db.prepare("SELECT COUNT(*) as c FROM human_actions WHERE status = 'pending'").get() as { c: number }).c;
+  if (pendingActions > 0) {
+    msg += `⚠️ ${pendingActions} pending human action(s) — /actions\n`;
+  }
+
+  msg += `${errors24h === 0 ? '✅ System clean' : `⚠️ ${errors24h} errors`} (24h)`;
+  return msg;
+}
+
+async function generateWeeklyReport(): Promise<string> {
+  const db = getDb();
+  const weekStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  const total = (db.prepare('SELECT COUNT(*) as c FROM products').get() as { c: number }).c;
+  const labeled = (db.prepare("SELECT COUNT(*) as c FROM products WHERE outcome_label IS NOT NULL").get() as { c: number }).c;
+  const wins = (db.prepare("SELECT COUNT(*) as c FROM products WHERE outcome_label = 'win'").get() as { c: number }).c;
+  const losses = (db.prepare("SELECT COUNT(*) as c FROM products WHERE outcome_label = 'loss'").get() as { c: number }).c;
+  const llmCalls = (db.prepare("SELECT COUNT(*) as c FROM llm_calls").get() as { c: number }).c;
+  const qloraPairs = (db.prepare("SELECT COUNT(*) as c FROM llm_calls WHERE outcome_quality IN ('keep','flip')").get() as { c: number }).c;
+  const errors7d = (db.prepare("SELECT COUNT(*) as c FROM system_events WHERE severity IN ('error','critical') AND created_at > datetime('now', '-7 days')").get() as { c: number }).c;
+
+  const rev = db.prepare("SELECT COALESCE(SUM(total_revenue),0) as rev, COALESCE(SUM(total_ad_spend),0) as spend FROM products").get() as { rev: number; spend: number };
+
+  const latestReflection = db.prepare(`
+    SELECT strategy_summary FROM learning_cycles
+    WHERE cycle_type = 'reflection' AND strategy_summary IS NOT NULL
+    ORDER BY created_at DESC LIMIT 1
+  `).get() as { strategy_summary: string } | undefined;
+
+  let msg = `📈 GHOSTMARKET WEEKLY REPORT — Week of ${weekStr}\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  msg += `📦 Products: ${total} total\n`;
+  msg += `🏷️ Labeled: ${labeled} (${wins} wins, ${losses} losses)\n`;
+  msg += `💰 Revenue: $${rev.rev.toFixed(2)} | Spend: $${rev.spend.toFixed(2)}\n`;
+  msg += `🧠 LLM calls: ${llmCalls} | QLoRA pairs: ${qloraPairs}\n`;
+  msg += `⚠️ Errors (7d): ${errors7d}\n\n`;
+
+  msg += `Model Progress:\n`;
+  msg += `  XGBoost: ${labeled >= 50 ? '✅ Ready to retrain' : `${labeled}/50 labeled (need ${50 - labeled} more)`}\n`;
+  msg += `  QLoRA: ${qloraPairs >= 50 ? '✅ Ready to fine-tune' : `${qloraPairs}/50 pairs (need ${50 - qloraPairs} more)`}\n\n`;
+
+  msg += `This Week:\n`;
+  if (labeled < 10) {
+    msg += `• Approve more products from Telegram cards\n`;
+    msg += `• Label outcomes with /result {id} win|loss\n`;
+    msg += `• Run /start to discover fresh trends\n`;
+  } else if (labeled < 50) {
+    msg += `• ${50 - labeled} more labels needed for XGBoost retrain\n`;
+    msg += `• Review live product performance\n`;
+    msg += `• Label outcomes to improve the model\n`;
+  } else {
+    msg += `• Run /learn to retrain XGBoost with new data\n`;
+    msg += `• Review strategy insights below\n`;
+    msg += `• Check P&L for optimization opportunities\n`;
+  }
+
+  if (latestReflection?.strategy_summary) {
+    const summary = latestReflection.strategy_summary.slice(0, 400);
+    msg += `\n💡 Latest Strategy:\n${summary}`;
+  }
+
+  return msg;
+}
+
 function setupCron(): void {
   // Scout light: pytrends every 2 hours, Reddit every 30 min
   cron.schedule('0 */2 * * *', () => {
@@ -636,35 +875,40 @@ function setupCron(): void {
   });
 
   // Scout heavy (on ROG): TikTok every 4 hours, Amazon every 6, AliExpress every 6
-  cron.schedule('15 */4 * * *', async () => {
-    if (paused) return;
-    logEvent('orchestrator', 'health_check', 'info', 'Triggering scout-heavy: tiktok_cc');
-    try {
-      await sendToROG('/scrape', { job_id: uuid(), source: 'tiktok_cc' });
-    } catch (e) {
-      logEvent('orchestrator', 'api_failure', 'error', `ROG scrape tiktok failed: ${e}`);
-    }
-  });
+  // Only run if ROG_ENABLED=true — otherwise these just spam errors
+  if (ROG_ENABLED) {
+    cron.schedule('15 */4 * * *', async () => {
+      if (paused) return;
+      logEvent('orchestrator', 'health_check', 'info', 'Triggering scout-heavy: tiktok_cc');
+      try {
+        await sendToROG('/scrape', { job_id: uuid(), source: 'tiktok_cc' });
+      } catch (e) {
+        logEvent('orchestrator', 'api_failure', 'error', `ROG scrape tiktok failed: ${e}`);
+      }
+    });
 
-  cron.schedule('30 */6 * * *', async () => {
-    if (paused) return;
-    logEvent('orchestrator', 'health_check', 'info', 'Triggering scout-heavy: amazon');
-    try {
-      await sendToROG('/scrape', { job_id: uuid(), source: 'amazon' });
-    } catch (e) {
-      logEvent('orchestrator', 'api_failure', 'error', `ROG scrape amazon failed: ${e}`);
-    }
-  });
+    cron.schedule('30 */6 * * *', async () => {
+      if (paused) return;
+      logEvent('orchestrator', 'health_check', 'info', 'Triggering scout-heavy: amazon');
+      try {
+        await sendToROG('/scrape', { job_id: uuid(), source: 'amazon' });
+      } catch (e) {
+        logEvent('orchestrator', 'api_failure', 'error', `ROG scrape amazon failed: ${e}`);
+      }
+    });
 
-  cron.schedule('45 */6 * * *', async () => {
-    if (paused) return;
-    logEvent('orchestrator', 'health_check', 'info', 'Triggering scout-heavy: aliexpress');
-    try {
-      await sendToROG('/scrape', { job_id: uuid(), source: 'aliexpress' });
-    } catch (e) {
-      logEvent('orchestrator', 'api_failure', 'error', `ROG scrape aliexpress failed: ${e}`);
-    }
-  });
+    cron.schedule('45 */6 * * *', async () => {
+      if (paused) return;
+      logEvent('orchestrator', 'health_check', 'info', 'Triggering scout-heavy: aliexpress');
+      try {
+        await sendToROG('/scrape', { job_id: uuid(), source: 'aliexpress' });
+      } catch (e) {
+        logEvent('orchestrator', 'api_failure', 'error', `ROG scrape aliexpress failed: ${e}`);
+      }
+    });
+  } else {
+    console.log('[Orchestrator] ROG_ENABLED=false — skipping heavy scout crons (TikTok, Amazon, AliExpress)');
+  }
 
   // Score new products every hour
   cron.schedule('5 * * * *', () => {
@@ -689,20 +933,66 @@ function setupCron(): void {
     eventBus.emit('agent:learn');
   });
 
-  console.log('[Orchestrator] Cron schedules initialized');
+  // Daily report: 9 AM Pacific (4 PM UTC / 16:00 UTC)
+  cron.schedule('0 16 * * *', async () => {
+    try {
+      const report = await generateDailyReport();
+      await sendTelegram(report);
+      logEvent('orchestrator', 'health_check', 'info', 'Daily report sent to Telegram');
+    } catch (e) {
+      console.error('[Orchestrator] Daily report failed:', e);
+    }
+  });
+
+  // Weekly report: Monday 9 AM Pacific (4 PM UTC)
+  cron.schedule('0 16 * * 1', async () => {
+    try {
+      // Trigger learning cycle first
+      eventBus.emit('agent:learn');
+      // Wait a moment for learning to start, then send report
+      setTimeout(async () => {
+        try {
+          const report = await generateWeeklyReport();
+          await sendTelegram(report);
+          logEvent('orchestrator', 'health_check', 'info', 'Weekly report sent to Telegram');
+        } catch (e) {
+          console.error('[Orchestrator] Weekly report send failed:', e);
+        }
+      }, 5000);
+    } catch (e) {
+      console.error('[Orchestrator] Weekly report failed:', e);
+    }
+  });
+
+  console.log('[Orchestrator] Cron schedules initialized (incl. daily 9AM + weekly Monday reports)');
 }
 
 // ============================================================
 // Logging helper
 // ============================================================
 
+// Sanitize sensitive data from log messages
+function sanitize(text: string): string {
+  return text
+    .replace(/vcp_[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/sk-ant-[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/r8_[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/nvapi-[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/AIzaSy[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/Bearer [a-zA-Z0-9_-]+/g, 'Bearer [REDACTED]')
+    .replace(/token=[a-zA-Z0-9_-]+/g, 'token=[REDACTED]');
+}
+
 function logEvent(agent: string, eventType: string, severity: string, message: string, metadata?: Record<string, unknown>): void {
   const db = getDb();
+  const safeMessage = sanitize(message);
+  const safeMeta = metadata ? sanitize(JSON.stringify(metadata)) : null;
   withRetry(() => {
     db.prepare(`
       INSERT INTO system_events (id, agent, event_type, severity, message, metadata)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(uuid(), agent, eventType, severity, message, metadata ? JSON.stringify(metadata) : null);
+    `).run(uuid(), agent, eventType, severity, safeMessage, safeMeta);
   });
 }
 
@@ -768,14 +1058,30 @@ async function runHealthCheck(): Promise<void> {
     }
   }
 
-  // Check ROG worker health
-  try {
-    const resp = await fetch(`${ROG_WORKER_URL}/health`, { signal: AbortSignal.timeout(5000) });
-    if (!resp.ok) {
-      logEvent('orchestrator', 'health_check', 'warning', 'ROG worker unhealthy');
+  // Check ROG worker health — only if ROG is enabled
+  if (ROG_ENABLED) {
+    try {
+      const resp = await fetch(`${ROG_WORKER_URL}/health`, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) {
+        const recentROGLog = db.prepare(`
+          SELECT 1 FROM system_events
+          WHERE agent = 'orchestrator' AND message LIKE '%ROG worker%'
+            AND created_at > datetime('now', '-1 hour')
+        `).get();
+        if (!recentROGLog) {
+          logEvent('orchestrator', 'health_check', 'warning', 'ROG worker unhealthy');
+        }
+      }
+    } catch {
+      const recentROGLog = db.prepare(`
+        SELECT 1 FROM system_events
+        WHERE agent = 'orchestrator' AND message LIKE '%ROG worker%'
+          AND created_at > datetime('now', '-1 hour')
+        `).get();
+      if (!recentROGLog) {
+        logEvent('orchestrator', 'health_check', 'warning', 'ROG worker unreachable');
+      }
     }
-  } catch {
-    logEvent('orchestrator', 'health_check', 'error', 'ROG worker unreachable');
   }
 }
 

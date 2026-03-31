@@ -1,3 +1,4 @@
+import { isLocal, proxyToOrchestrator } from '@/lib/api-proxy';
 import Database from 'better-sqlite3';
 import path from 'path';
 
@@ -12,6 +13,7 @@ function getDb(): Database.Database {
 }
 
 export async function GET() {
+  if (!isLocal()) return proxyToOrchestrator('/api/events/stream');
   const encoder = new TextEncoder();
   let cancelled = false;
 

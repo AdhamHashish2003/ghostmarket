@@ -55,6 +55,20 @@ def log_training_event(table: str, data: dict[str, Any]) -> str:
     return row_id
 
 
+def _sanitize(text: str) -> str:
+    """Strip API keys and tokens from log messages."""
+    import re
+    text = re.sub(r'vcp_[a-zA-Z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'gsk_[a-zA-Z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'sk-ant-[a-zA-Z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'r8_[a-zA-Z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'nvapi-[a-zA-Z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'AIzaSy[a-zA-Z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'Bearer [a-zA-Z0-9_-]+', 'Bearer [REDACTED]', text)
+    text = re.sub(r'token=[a-zA-Z0-9_-]+', 'token=[REDACTED]', text)
+    return text
+
+
 def log_system_event(
     agent: str,
     event_type: str,
@@ -66,8 +80,8 @@ def log_system_event(
         "agent": agent,
         "event_type": event_type,
         "severity": severity,
-        "message": message,
-        "metadata": json.dumps(metadata) if metadata else None,
+        "message": _sanitize(message),
+        "metadata": _sanitize(json.dumps(metadata)) if metadata else None,
     })
 
 
@@ -128,7 +142,7 @@ def get_product(product_id: str) -> dict[str, Any] | None:
 def find_product_by_keyword(keyword: str) -> dict[str, Any] | None:
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM products WHERE keyword = ? ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM products WHERE LOWER(keyword) = LOWER(?) ORDER BY created_at DESC LIMIT 1",
             [keyword],
         ).fetchone()
         return dict(row) if row else None

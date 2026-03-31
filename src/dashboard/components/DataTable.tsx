@@ -63,15 +63,15 @@ export default function DataTable({ columns, data, onRowClick, sortable = true }
   const getSortIndicator = (key: string) => {
     if (!sortable) return null;
     if (sortKey !== key) return <span style={{ color: '#333', marginLeft: 4 }}>{'\u2195'}</span>;
-    if (sortDir === 'asc') return <span style={{ color: '#00f0ff', marginLeft: 4 }}>{'\u2191'}</span>;
-    if (sortDir === 'desc') return <span style={{ color: '#00f0ff', marginLeft: 4 }}>{'\u2193'}</span>;
+    if (sortDir === 'asc') return <span style={{ color: '#00FFFF', marginLeft: 4 }}>{'\u2191'}</span>;
+    if (sortDir === 'desc') return <span style={{ color: '#00FFFF', marginLeft: 4 }}>{'\u2193'}</span>;
     return null;
   };
 
   return (
     <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
+      background: '#08080c',
+      border: '1px solid #1a1a22',
       borderRadius: 8,
       overflow: 'hidden',
     }}>
@@ -84,8 +84,8 @@ export default function DataTable({ columns, data, onRowClick, sortable = true }
         }}>
           <thead>
             <tr style={{
-              background: '#0d0d14',
-              borderBottom: '1px solid #1a1a24',
+              background: '#060608',
+              borderBottom: '1px solid #1a1a22',
             }}>
               {columns.map(col => (
                 <th
@@ -103,7 +103,7 @@ export default function DataTable({ columns, data, onRowClick, sortable = true }
                     userSelect: 'none',
                     whiteSpace: 'nowrap',
                     width: col.width,
-                    borderBottom: sortKey === col.key ? '2px solid #00f0ff44' : '2px solid transparent',
+                    borderBottom: sortKey === col.key ? '2px solid #00FFFF44' : '2px solid transparent',
                     transition: 'border-color 0.2s ease',
                   }}
                 >
@@ -141,14 +141,14 @@ export default function DataTable({ columns, data, onRowClick, sortable = true }
                   onMouseLeave={() => setHoveredRow(null)}
                   style={{
                     background: isHovered
-                      ? '#1a1a2488'
+                      ? '#1a1a2288'
                       : isEven
-                        ? '#111118'
+                        ? '#08080c'
                         : '#0f0f16',
                     cursor: onRowClick ? 'pointer' : 'default',
-                    borderBottom: '1px solid #1a1a2444',
+                    borderBottom: '1px solid #1a1a2244',
                     transition: 'background 0.15s ease',
-                    boxShadow: isHovered ? 'inset 0 0 20px #00f0ff08, 0 0 8px #00f0ff06' : 'none',
+                    boxShadow: isHovered ? 'inset 0 0 20px #00FFFF08, 0 0 8px #00FFFF06' : 'none',
                   }}
                 >
                   {columns.map(col => {
@@ -183,7 +183,7 @@ export default function DataTable({ columns, data, onRowClick, sortable = true }
       {data.length > 0 && (
         <div style={{
           padding: '8px 14px',
-          borderTop: '1px solid #1a1a24',
+          borderTop: '1px solid #1a1a22',
           fontSize: '0.65rem',
           color: '#444',
           fontFamily: 'monospace',

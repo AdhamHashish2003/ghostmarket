@@ -11,8 +11,8 @@ interface EventItem {
 }
 
 const EVENT_COLORS: Record<string, string> = {
-  discovery: '#00f0ff',
-  scoring: '#ff00aa',
+  discovery: '#00FFFF',
+  scoring: '#FF6B00',
   approval: '#00ff66',
   error: '#ff3344',
   info: '#666666',
@@ -103,14 +103,14 @@ export default function EventFeed() {
 
   return (
     <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
+      background: '#08080c',
+      border: '1px solid #1a1a22',
       borderRadius: 8,
       overflow: 'hidden',
     }}>
       <div style={{
         padding: '10px 14px',
-        borderBottom: '1px solid #1a1a24',
+        borderBottom: '1px solid #1a1a22',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -194,14 +194,14 @@ export default function EventFeed() {
           width: 4px;
         }
         div::-webkit-scrollbar-track {
-          background: #0a0a0f;
+          background: #000000;
         }
         div::-webkit-scrollbar-thumb {
-          background: #1a1a24;
+          background: #1a1a22;
           border-radius: 2px;
         }
         div::-webkit-scrollbar-thumb:hover {
-          background: #00f0ff44;
+          background: #00FFFF44;
         }
       `}</style>
     </div>

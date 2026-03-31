@@ -16,3 +16,16 @@ __pycache__/
 *.egg-info/
 .next/
 logs/
+data/deploy/
+data/tunnel_state.json
+.vercel/
+.netlify/
+models/training_data/
+src/models/
+data/raw/
+*.log
+test_dashboard.cjs
+backtest/data/raw/
+backtest/data/*.zip
+backtest/data/*.csv
+backtest/data/*.jsonl

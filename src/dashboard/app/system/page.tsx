@@ -60,7 +60,7 @@ export default function SystemPage() {
           const isRecent = status ? (Date.now() - new Date(status.last_seen).getTime()) < 3600000 : false;
           return (
             <div key={agent} style={{
-              background: '#1a1a24',
+              background: '#1a1a22',
               padding: 12,
               borderRadius: 8,
               border: `1px solid ${isRecent ? '#22c55e' : status ? '#333' : '#222'}`,
@@ -81,7 +81,7 @@ export default function SystemPage() {
       <h2 style={{ fontSize: '1.1rem', marginBottom: 12 }}>Event Distribution</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 32, flexWrap: 'wrap' }}>
         {eventCounts.map(e => (
-          <div key={e.event_type} style={{ background: '#1a1a24', padding: '8px 16px', borderRadius: 6, fontSize: '0.85rem' }}>
+          <div key={e.event_type} style={{ background: '#1a1a22', padding: '8px 16px', borderRadius: 6, fontSize: '0.85rem' }}>
             <b>{e.cnt}</b> <span style={{ color: '#888' }}>{e.event_type}</span>
           </div>
         ))}
@@ -93,7 +93,7 @@ export default function SystemPage() {
           <h2 style={{ fontSize: '1.1rem', marginBottom: 12, color: '#ef4444' }}>Recent Errors</h2>
           <div style={{ marginBottom: 32 }}>
             {recentErrors.map((e, i) => (
-              <div key={i} style={{ background: '#1a1a24', padding: 10, borderRadius: 6, marginBottom: 4, borderLeft: `3px solid ${severityColors[e.severity]}`, fontSize: '0.8rem' }}>
+              <div key={i} style={{ background: '#1a1a22', padding: 10, borderRadius: 6, marginBottom: 4, borderLeft: `3px solid ${severityColors[e.severity]}`, fontSize: '0.8rem' }}>
                 <span style={{ color: severityColors[e.severity], fontWeight: 'bold' }}>[{e.agent}]</span> {e.message}
                 <span style={{ float: 'right', color: '#555', fontSize: '0.7rem' }}>{new Date(e.created_at).toLocaleString()}</span>
               </div>

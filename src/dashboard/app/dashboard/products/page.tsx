@@ -1,15 +1,15 @@
-import { getDb } from '@/lib/db';
 import Link from 'next/link';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
 const STAGE_COLORS: Record<string, string> = {
-  discovered: '#00f0ff',
-  scored: '#ff00aa',
+  discovered: '#00FFFF',
+  scored: '#FF6B00',
   approved: '#00ff66',
   building: '#ffaa00',
   live: '#00ff66',
-  tracking: '#00f0ff',
+  tracking: '#00FFFF',
   completed: '#8b5cf6',
   skipped: '#666',
   killed: '#ff3344',
@@ -21,24 +21,59 @@ const OUTCOME_COLORS: Record<string, string> = {
   breakeven: '#ffaa00',
 };
 
-export default function ProductsPage() {
-  const db = getDb();
+const ALL_STAGES = ['discovered', 'scored', 'approved', 'building', 'live', 'tracking', 'completed', 'skipped', 'killed'];
 
-  const products = db.prepare(`
-    SELECT id, keyword, category, stage, score, decision, outcome_label, created_at
-    FROM products ORDER BY score DESC NULLS LAST, created_at DESC
-  `).all() as Array<{
-    id: string;
-    keyword: string;
-    category: string;
-    stage: string;
-    score: number | null;
-    decision: string | null;
-    outcome_label: string | null;
-    created_at: string;
-  }>;
+const SORT_OPTIONS = [
+  { key: 'score', label: 'Score' },
+  { key: 'created_at', label: 'Newest' },
+  { key: 'keyword', label: 'Keyword' },
+];
+
+interface PageProps {
+  searchParams: Promise<{ stage?: string; sort?: string }>;
+}
+
+export default async function ProductsPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const activeStage = params.stage || '';
+  const activeSort = params.sort || 'score';
+
+  type ProductRow = {
+    id: string; keyword: string; category: string; stage: string;
+    score: number | null; decision: string | null; outcome_label: string | null; created_at: string;
+  };
+
+  let products: ProductRow[] = [];
+  if (canUseLocalDb()) {
+    const { getDb } = await import('@/lib/db');
+    const db = getDb();
+    const whereClause = activeStage ? `WHERE stage = '${activeStage.replace(/'/g, "''")}'` : '';
+    const orderClause = activeSort === 'keyword' ? 'ORDER BY keyword ASC' : activeSort === 'created_at' ? 'ORDER BY created_at DESC' : 'ORDER BY score DESC NULLS LAST, created_at DESC';
+    products = db.prepare(`SELECT id, keyword, category, stage, score, decision, outcome_label, created_at FROM products ${whereClause} ${orderClause}`).all() as ProductRow[];
+  } else {
+    const qs = new URLSearchParams();
+    if (activeStage) qs.set('stage', activeStage);
+    qs.set('sort', activeSort === 'keyword' ? 'keyword' : activeSort === 'created_at' ? 'created_at' : 'score');
+    qs.set('limit', '100');
+    const data = await fetchOrchestrator<{ products: ProductRow[] }>(`/api/products?${qs}`);
+    products = data.products || [];
+  }
 
   const total = products.length;
+
+  // Build query string helper
+  function buildHref(overrides: Record<string, string>): string {
+    const p: Record<string, string> = {};
+    if (activeStage) p.stage = activeStage;
+    if (activeSort && activeSort !== 'score') p.sort = activeSort;
+    Object.assign(p, overrides);
+    // Remove empty values
+    for (const k of Object.keys(p)) {
+      if (!p[k]) delete p[k];
+    }
+    const qs = new URLSearchParams(p).toString();
+    return `/dashboard/products${qs ? `?${qs}` : ''}`;
+  }
 
   return (
     <div>
@@ -60,14 +95,79 @@ export default function ProductsPage() {
           fontFamily: "'JetBrains Mono', monospace",
           marginTop: 4,
         }}>
-          {total} products in pipeline
+          {total} products{activeStage ? ` in "${activeStage}"` : ' in pipeline'}
         </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        <Link
+          href={buildHref({ stage: '' })}
+          style={{
+            background: !activeStage ? '#00FFFF22' : '#08080c',
+            border: `1px solid ${!activeStage ? '#00FFFF66' : '#1a1a22'}`,
+            borderRadius: 6,
+            padding: '5px 12px',
+            color: !activeStage ? '#00FFFF' : '#666',
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '0.65rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            textTransform: 'uppercase',
+          }}
+        >
+          All Stages
+        </Link>
+        {ALL_STAGES.map(stage => (
+          <Link
+            key={stage}
+            href={buildHref({ stage })}
+            style={{
+              background: activeStage === stage ? `${STAGE_COLORS[stage] || '#333'}22` : '#08080c',
+              border: `1px solid ${activeStage === stage ? `${STAGE_COLORS[stage] || '#333'}66` : '#1a1a22'}`,
+              borderRadius: 6,
+              padding: '5px 12px',
+              color: activeStage === stage ? (STAGE_COLORS[stage] || '#666') : '#555',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '0.65rem',
+              fontWeight: 600,
+              textDecoration: 'none',
+              textTransform: 'uppercase',
+            }}
+          >
+            {stage}
+          </Link>
+        ))}
+      </div>
+
+      {/* Sort Buttons */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <span style={{ color: '#444', fontFamily: "'JetBrains Mono', monospace", fontSize: '0.65rem', alignSelf: 'center', marginRight: 4 }}>Sort:</span>
+        {SORT_OPTIONS.map(opt => (
+          <Link
+            key={opt.key}
+            href={buildHref({ sort: opt.key === 'score' ? '' : opt.key })}
+            style={{
+              background: activeSort === opt.key ? '#FF6B0022' : '#08080c',
+              border: `1px solid ${activeSort === opt.key ? '#FF6B0066' : '#1a1a22'}`,
+              borderRadius: 6,
+              padding: '4px 10px',
+              color: activeSort === opt.key ? '#FF6B00' : '#555',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '0.65rem',
+              fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
+            {opt.label}
+          </Link>
+        ))}
       </div>
 
       {/* Data Table */}
       <div style={{
-        background: '#111118',
-        border: '1px solid #1a1a24',
+        background: '#08080c',
+        border: '1px solid #1a1a22',
         borderRadius: 8,
         overflow: 'hidden',
       }}>
@@ -78,7 +178,7 @@ export default function ProductsPage() {
           fontSize: '0.75rem',
         }}>
           <thead>
-            <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+            <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
               <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Keyword</th>
               <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Score</th>
               <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stage</th>
@@ -91,17 +191,17 @@ export default function ProductsPage() {
           <tbody>
             {products.map((p) => {
               const scoreVal = p.score ?? 0;
-              const scoreColor = scoreVal >= 80 ? '#00ff66' : scoreVal >= 60 ? '#ffaa00' : '#666';
+              const scoreColor = scoreVal >= 70 ? '#00ff66' : scoreVal >= 40 ? '#FF6B00' : scoreVal > 0 ? '#ff3344' : '#333';
               const stageColor = STAGE_COLORS[p.stage] || '#333';
               const outcomeColor = p.outcome_label ? (OUTCOME_COLORS[p.outcome_label] || '#666') : '#333';
 
               return (
-                <tr key={p.id} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                <tr key={p.id} style={{ borderBottom: '1px solid #1a1a2244' }}>
                   <td style={{ padding: '8px 14px' }}>
                     <Link
                       href={`/dashboard/products/${p.id}`}
                       style={{
-                        color: '#00f0ff',
+                        color: '#00FFFF',
                         fontWeight: 600,
                         textDecoration: 'none',
                       }}
@@ -113,7 +213,7 @@ export default function ProductsPage() {
                     <span style={{
                       fontWeight: 700,
                       color: scoreColor,
-                      textShadow: scoreVal >= 80 ? '0 0 8px #00ff6644' : 'none',
+                      textShadow: scoreVal >= 70 ? '0 0 8px #00ff6644' : 'none',
                     }}>
                       {p.score != null ? Math.round(p.score) : '--'}
                     </span>
@@ -167,7 +267,7 @@ export default function ProductsPage() {
                   color: '#333',
                   fontSize: '0.75rem',
                 }}>
-                  No products discovered yet. Pipeline awaiting activation...
+                  No products{activeStage ? ` in "${activeStage}" stage` : ' discovered yet'}. Pipeline awaiting activation...
                 </td>
               </tr>
             )}

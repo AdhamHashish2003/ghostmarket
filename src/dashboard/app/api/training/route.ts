@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isLocal, proxyToOrchestrator } from '@/lib/api-proxy';
 import Database from 'better-sqlite3';
 import path from 'path';
 
@@ -13,6 +14,7 @@ function getDb(): Database.Database {
 }
 
 export async function GET() {
+  if (!isLocal()) return proxyToOrchestrator('/api/training');
   let db: Database.Database | null = null;
   try {
     db = getDb();

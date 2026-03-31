@@ -1,0 +1,78 @@
+{
+  "accuracy": 0.8451,
+  "baseline_win_rate": 0.0021,
+  "model_win_rate_at_50": 0.0133,
+  "edge_multiplier": 6.2,
+  "products_picked": 5571,
+  "total_test": 35490,
+  "thresholds": {
+    "0.5": {
+      "picked": 5571,
+      "win_rate": 0.0133,
+      "edge": 6.2
+    },
+    "0.55": {
+      "picked": 5271,
+      "win_rate": 0.0138,
+      "edge": 6.47
+    },
+    "0.6": {
+      "picked": 4882,
+      "win_rate": 0.0143,
+      "edge": 6.7
+    },
+    "0.65": {
+      "picked": 4379,
+      "win_rate": 0.0155,
+      "edge": 7.25
+    },
+    "0.7": {
+      "picked": 3916,
+      "win_rate": 0.0169,
+      "edge": 7.87
+    }
+  },
+  "feature_importance": {
+    "rating": 0.5972539782524109,
+    "cat_gadgets": 0.055159684270620346,
+    "peak_to_current": 0.050350308418273926,
+    "margin_pct": 0.04993017017841339,
+    "price": 0.047151822596788406,
+    "current_interest": 0.036807794123888016,
+    "cat_pet_products": 0.029969388619065285,
+    "cat_fitness": 0.028121527284383774,
+    "trend_velocity": 0.0245748832821846,
+    "cat_kitchen": 0.023321684449911118,
+    "cat_car_accessories": 0.0230375025421381,
+    "cat_home_decor": 0.021000327542424202,
+    "price_tier": 0.013320967555046082
+  },
+  "classification_report": {
+    "loss": {
+      "precision": 0.9999331528460176,
+      "recall": 0.8447789009996047,
+      "f1-score": 0.9158312032204246,
+      "support": 35414.0
+    },
+    "win": {
+      "precision": 0.013283073056901813,
+      "recall": 0.9736842105263158,
+      "f1-score": 0.02620860633964937,
+      "support": 76.0
+    },
+    "accuracy": 0.845054945054945,
+    "macro avg": {
+      "precision": 0.5066081129514597,
+      "recall": 0.9092315557629602,
+      "f1-score": 0.47101990478003697,
+      "support": 35490.0
+    },
+    "weighted avg": {
+      "precision": 0.997820292714601,
+      "recall": 0.8450549450549452,
+      "f1-score": 0.9139261224268789,
+      "support": 35490.0
+    }
+  },
+  "note": "v1 \u2014 fixed data leakage. No orders-derived features. Uses price, rating, margin, category, Google Trends."
+}

@@ -260,6 +260,21 @@ CREATE TABLE IF NOT EXISTS operator_decisions (
 CREATE INDEX IF NOT EXISTS idx_decisions_product ON operator_decisions(product_id);
 CREATE INDEX IF NOT EXISTS idx_decisions_decision ON operator_decisions(decision);
 
+CREATE TABLE IF NOT EXISTS human_actions (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    product_id TEXT REFERENCES products(id),
+    action_type TEXT NOT NULL,
+    action_description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'skipped')),
+    telegram_message_id INTEGER,
+    operator_data TEXT,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_human_actions_status ON human_actions(status);
+CREATE INDEX IF NOT EXISTS idx_human_actions_product ON human_actions(product_id);
+
 CREATE TABLE IF NOT EXISTS system_events (
     id TEXT PRIMARY KEY,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

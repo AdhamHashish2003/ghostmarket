@@ -42,8 +42,8 @@ const STAGE_MAP: Record<string, string> = {
   completed: 'learner',
 };
 
-const CYAN = '#00f0ff';
-const MAGENTA = '#ff00aa';
+const CYAN = '#00FFFF';
+const MAGENTA = '#FF6B00';
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return '--';
@@ -79,7 +79,7 @@ function HexShape({ active, children, label, count, lastActivity }: {
           width: 80,
           height: 80,
           clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
-          background: active ? '#111118' : '#0d0d14',
+          background: active ? '#08080c' : '#060608',
           border: 'none',
           display: 'flex',
           flexDirection: 'column',
@@ -94,14 +94,14 @@ function HexShape({ active, children, label, count, lastActivity }: {
           position: 'absolute',
           inset: -1,
           clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
-          background: active ? CYAN : '#1a1a24',
+          background: active ? CYAN : '#1a1a22',
           zIndex: 0,
         }} />
         <div style={{
           position: 'absolute',
           inset: 1,
           clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
-          background: active ? '#111118' : '#0d0d14',
+          background: active ? '#08080c' : '#060608',
           zIndex: 1,
           display: 'flex',
           flexDirection: 'column',
@@ -130,7 +130,7 @@ function HexShape({ active, children, label, count, lastActivity }: {
       </div>
       <div style={{
         fontSize: '0.55rem',
-        color: active ? '#00f0ff88' : '#333',
+        color: active ? '#00FFFF88' : '#333',
         fontFamily: 'monospace',
       }}>
         {timeAgo(lastActivity)}
@@ -330,8 +330,8 @@ export default function PipelineViz() {
       {/* Animated glow keyframes via style tag */}
       <style>{`
         @keyframes hexGlow {
-          0%, 100% { filter: drop-shadow(0 0 4px #00f0ff44); }
-          50% { filter: drop-shadow(0 0 12px #00f0ff88); }
+          0%, 100% { filter: drop-shadow(0 0 4px #00FFFF44); }
+          50% { filter: drop-shadow(0 0 12px #00FFFF88); }
         }
       `}</style>
     </div>

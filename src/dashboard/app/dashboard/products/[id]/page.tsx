@@ -1,23 +1,23 @@
-import { getDb } from '@/lib/db';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 import ProductActions from '@/components/ProductActions';
 
 export const dynamic = 'force-dynamic';
 
 const STAGE_COLORS: Record<string, string> = {
-  discovered: '#00f0ff',
-  scored: '#ff00aa',
+  discovered: '#00FFFF',
+  scored: '#FF6B00',
   approved: '#00ff66',
   building: '#ffaa00',
   live: '#00ff66',
-  tracking: '#00f0ff',
+  tracking: '#00FFFF',
   completed: '#8b5cf6',
   skipped: '#666',
   killed: '#ff3344',
 };
 
 const DIMENSION_COLORS: Record<string, string> = {
-  trend_strength: '#00f0ff',
-  market_gap: '#ff00aa',
+  trend_strength: '#00FFFF',
+  market_gap: '#FF6B00',
   competition: '#00ff66',
   margin_potential: '#ffaa00',
   viral_potential: '#8b5cf6',
@@ -25,10 +25,42 @@ const DIMENSION_COLORS: Record<string, string> = {
   supply_ease: '#06b6d4',
 };
 
-export default function ProductDetailPage({ params }: { params: { id: string } }) {
-  const db = getDb();
+export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(params.id) as Record<string, unknown> | undefined;
+  let product: Record<string, unknown> | undefined;
+  let signals: Array<Record<string, unknown>> = [];
+  let suppliers: Array<Record<string, unknown>> = [];
+  let brandKit: Record<string, unknown> | undefined;
+  let pages: Array<Record<string, unknown>> = [];
+  let creatives: Array<Record<string, unknown>> = [];
+  let posts: Array<Record<string, unknown>> = [];
+
+  if (canUseLocalDb()) {
+    const { getDb } = await import('@/lib/db');
+    const db = getDb();
+    product = db.prepare('SELECT * FROM products WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (product) {
+      signals = db.prepare('SELECT * FROM trend_signals WHERE product_id = ? ORDER BY created_at DESC').all(id) as Array<Record<string, unknown>>;
+      suppliers = db.prepare('SELECT * FROM suppliers WHERE product_id = ? ORDER BY landed_cost').all(id) as Array<Record<string, unknown>>;
+      brandKit = db.prepare('SELECT * FROM brand_kits WHERE product_id = ? LIMIT 1').get(id) as Record<string, unknown> | undefined;
+      pages = db.prepare('SELECT * FROM landing_pages WHERE product_id = ?').all(id) as Array<Record<string, unknown>>;
+      creatives = db.prepare('SELECT * FROM ad_creatives WHERE product_id = ?').all(id) as Array<Record<string, unknown>>;
+      posts = db.prepare('SELECT * FROM content_posts WHERE product_id = ? ORDER BY scheduled_at').all(id) as Array<Record<string, unknown>>;
+    }
+  } else {
+    try {
+      const data = await fetchOrchestrator<{ product: Record<string, unknown>; signals: unknown[]; suppliers: unknown[]; brandKit: unknown; pages: unknown[]; creatives: unknown[]; posts: unknown[] }>(`/api/products/${id}`);
+      product = data.product as Record<string, unknown>;
+      signals = (data.signals || []) as Array<Record<string, unknown>>;
+      suppliers = (data.suppliers || []) as Array<Record<string, unknown>>;
+      brandKit = data.brandKit as Record<string, unknown> | undefined;
+      pages = (data.pages || []) as Array<Record<string, unknown>>;
+      creatives = (data.creatives || []) as Array<Record<string, unknown>>;
+      posts = (data.posts || []) as Array<Record<string, unknown>>;
+    } catch { /* product stays undefined → 404 */ }
+  }
+
   if (!product) {
     return (
       <div style={{
@@ -41,13 +73,6 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       </div>
     );
   }
-
-  const signals = db.prepare('SELECT * FROM trend_signals WHERE product_id = ? ORDER BY created_at DESC').all(params.id) as Array<Record<string, unknown>>;
-  const suppliers = db.prepare('SELECT * FROM suppliers WHERE product_id = ? ORDER BY landed_cost').all(params.id) as Array<Record<string, unknown>>;
-  const brandKit = db.prepare('SELECT * FROM brand_kits WHERE product_id = ? LIMIT 1').get(params.id) as Record<string, unknown> | undefined;
-  const pages = db.prepare('SELECT * FROM landing_pages WHERE product_id = ?').all(params.id) as Array<Record<string, unknown>>;
-  const creatives = db.prepare('SELECT * FROM ad_creatives WHERE product_id = ?').all(params.id) as Array<Record<string, unknown>>;
-  const posts = db.prepare('SELECT * FROM content_posts WHERE product_id = ? ORDER BY scheduled_at').all(params.id) as Array<Record<string, unknown>>;
 
   const breakdown = product.score_breakdown ? JSON.parse(product.score_breakdown as string) : null;
   const stageColor = STAGE_COLORS[product.stage as string] || '#666';
@@ -67,12 +92,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       </a>
 
       {/* Action Buttons */}
-      <ProductActions productId={params.id} />
+      <ProductActions productId={id} />
 
       {/* Product Header */}
       <div style={{
-        background: '#111118',
-        border: '1px solid #1a1a24',
+        background: '#08080c',
+        border: '1px solid #1a1a22',
         borderRadius: 12,
         padding: '24px 28px',
         marginBottom: 24,
@@ -162,20 +187,20 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
       {/* Score Breakdown */}
       {breakdown && (
-        <Section title="SCORE BREAKDOWN" color="#00f0ff">
+        <Section title="SCORE BREAKDOWN" color="#00FFFF">
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
             gap: 10,
           }}>
             {Object.entries(breakdown).map(([key, value]) => {
-              const dimColor = DIMENSION_COLORS[key] || '#00f0ff';
+              const dimColor = DIMENSION_COLORS[key] || '#00FFFF';
               const numVal = Number(value);
               const pct = Math.min(100, Math.max(0, numVal));
               return (
                 <div key={key} style={{
-                  background: '#0d0d14',
-                  border: '1px solid #1a1a24',
+                  background: '#060608',
+                  border: '1px solid #1a1a22',
                   borderRadius: 8,
                   padding: '12px 14px',
                 }}>
@@ -207,7 +232,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                   <div style={{
                     width: '100%',
                     height: 4,
-                    background: '#1a1a24',
+                    background: '#1a1a22',
                     borderRadius: 2,
                     overflow: 'hidden',
                   }}>
@@ -228,12 +253,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
       {/* Signals */}
       {signals.length > 0 && (
-        <Section title={`TREND SIGNALS (${signals.length})`} color="#ff00aa">
+        <Section title={`TREND SIGNALS (${signals.length})`} color="#FF6B00">
           <div style={{ display: 'grid', gap: 8 }}>
             {signals.map((s, i) => (
               <div key={i} style={{
-                background: '#0d0d14',
-                border: '1px solid #1a1a24',
+                background: '#060608',
+                border: '1px solid #1a1a22',
                 borderRadius: 8,
                 padding: '12px 16px',
                 display: 'flex',
@@ -242,7 +267,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               }}>
                 <div>
                   <span style={{
-                    color: '#ff00aa',
+                    color: '#FF6B00',
                     fontWeight: 600,
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: '0.8rem',
@@ -260,7 +285,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                 </div>
                 {s.source_url ? (
                   <a href={String(s.source_url)} target="_blank" rel="noopener noreferrer" style={{
-                    color: '#00f0ff',
+                    color: '#00FFFF',
                     fontSize: '0.7rem',
                     fontFamily: "'JetBrains Mono', monospace",
                     textDecoration: 'none',
@@ -280,8 +305,8 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
           <div style={{ display: 'grid', gap: 8 }}>
             {suppliers.map((s, i) => (
               <div key={i} style={{
-                background: '#0d0d14',
-                border: s.is_best ? '1px solid #00ff6644' : '1px solid #1a1a24',
+                background: '#060608',
+                border: s.is_best ? '1px solid #00ff6644' : '1px solid #1a1a22',
                 borderRadius: 8,
                 padding: '14px 16px',
                 boxShadow: s.is_best ? '0 0 12px #00ff6611' : 'none',
@@ -344,8 +369,8 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       {brandKit && (
         <Section title="BRAND KIT" color="#8b5cf6">
           <div style={{
-            background: '#0d0d14',
-            border: '1px solid #1a1a24',
+            background: '#060608',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             padding: '16px 20px',
           }}>
@@ -377,7 +402,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                       height: 36,
                       background: c,
                       borderRadius: 4,
-                      border: '1px solid #1a1a24',
+                      border: '1px solid #1a1a22',
                     }} title={c} />
                   ))}
                 </div>
@@ -389,12 +414,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
       {/* Landing Pages */}
       {pages.length > 0 && (
-        <Section title={`LANDING PAGES (${pages.length})`} color="#00f0ff">
+        <Section title={`LANDING PAGES (${pages.length})`} color="#00FFFF">
           <div style={{ display: 'grid', gap: 8 }}>
             {pages.map((p, i) => (
               <div key={i} style={{
-                background: '#0d0d14',
-                border: '1px solid #1a1a24',
+                background: '#060608',
+                border: '1px solid #1a1a22',
                 borderRadius: 8,
                 padding: '12px 16px',
                 display: 'flex',
@@ -414,7 +439,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                 </div>
                 {p.url ? (
                   <a href={String(p.url)} target="_blank" rel="noopener noreferrer" style={{
-                    color: '#00f0ff',
+                    color: '#00FFFF',
                     fontSize: '0.7rem',
                     fontFamily: "'JetBrains Mono', monospace",
                     textDecoration: 'none',
@@ -430,12 +455,12 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
       {/* Ad Creatives */}
       {creatives.length > 0 && (
-        <Section title={`AD CREATIVES (${creatives.length})`} color="#ff00aa">
+        <Section title={`AD CREATIVES (${creatives.length})`} color="#FF6B00">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
             {creatives.map((c, i) => (
               <div key={i} style={{
-                background: '#0d0d14',
-                border: '1px solid #1a1a24',
+                background: '#060608',
+                border: '1px solid #1a1a22',
                 borderRadius: 8,
                 padding: '12px 16px',
               }}>
@@ -463,7 +488,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           <FinancialCard label="Revenue" value={`$${Number(product.total_revenue || 0).toFixed(2)}`} color="#00ff66" />
           <FinancialCard label="Ad Spend" value={`$${Number(product.total_ad_spend || 0).toFixed(2)}`} color="#ff3344" />
-          <FinancialCard label="Orders" value={String(Number(product.total_orders) || 0)} color="#00f0ff" />
+          <FinancialCard label="Orders" value={String(Number(product.total_orders) || 0)} color="#00FFFF" />
           <FinancialCard label="ROAS" value={product.roas != null ? `${Number(product.roas).toFixed(1)}x` : 'N/A'} color="#ffaa00" />
         </div>
       </Section>
@@ -496,8 +521,8 @@ function Section({ title, color, children }: { title: string; color: string; chi
 function FinancialCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div style={{
-      background: '#0d0d14',
-      border: '1px solid #1a1a24',
+      background: '#060608',
+      border: '1px solid #1a1a22',
       borderRadius: 8,
       padding: '16px 14px',
       textAlign: 'center',

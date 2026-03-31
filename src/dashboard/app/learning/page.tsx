@@ -48,7 +48,7 @@ export default function LearningPage() {
         {sourceRates.sort((a, b) => (b.wins / b.total) - (a.wins / a.total)).map(s => {
           const rate = s.total > 0 ? (s.wins / s.total * 100).toFixed(0) : '0';
           return (
-            <div key={s.source} style={{ background: '#1a1a24', padding: 16, borderRadius: 8, minWidth: 120, textAlign: 'center' }}>
+            <div key={s.source} style={{ background: '#1a1a22', padding: 16, borderRadius: 8, minWidth: 120, textAlign: 'center' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: parseInt(rate) > 40 ? '#22c55e' : parseInt(rate) > 20 ? '#f59e0b' : '#ef4444' }}>
                 {rate}%
               </div>
@@ -64,7 +64,7 @@ export default function LearningPage() {
       {latestReflection && (
         <>
           <h2 style={{ fontSize: '1.1rem', marginBottom: 12 }}>Strategy Insights</h2>
-          <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, marginBottom: 32, whiteSpace: 'pre-wrap', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, marginBottom: 32, whiteSpace: 'pre-wrap', fontSize: '0.85rem', lineHeight: 1.6 }}>
             {latestReflection.strategy_summary}
           </div>
         </>
@@ -86,7 +86,7 @@ export default function LearningPage() {
         </thead>
         <tbody>
           {cycles.map((c, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #1a1a24' }}>
+            <tr key={i} style={{ borderBottom: '1px solid #1a1a22' }}>
               <td style={{ padding: 8, fontSize: '0.75rem' }}>{new Date(c.created_at as string).toLocaleString()}</td>
               <td style={{ textAlign: 'center', padding: 8 }}>
                 <span style={{ background: c.cycle_type === 'xgboost' ? '#3b82f6' : c.cycle_type === 'qlora' ? '#8b5cf6' : '#f59e0b', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem' }}>
@@ -110,7 +110,7 @@ function StatusCard({ label, value, threshold }: { label: string; value: number 
   const isNumber = typeof value === 'number';
   const isMet = threshold ? (value as number) >= threshold : value === 'YES';
   return (
-    <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, textAlign: 'center', border: `1px solid ${isMet ? '#22c55e' : '#333'}` }}>
+    <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, textAlign: 'center', border: `1px solid ${isMet ? '#22c55e' : '#333'}` }}>
       <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: isMet ? '#22c55e' : '#888' }}>
         {isNumber ? `${value}${threshold ? `/${threshold}` : ''}` : value}
       </div>

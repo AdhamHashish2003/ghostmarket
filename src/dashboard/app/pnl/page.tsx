@@ -57,15 +57,15 @@ export default function PnLPage() {
 
       {/* Win/Loss Distribution */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
-        <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
+        <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: '2rem' }}>✅ {totals.wins || 0}</div>
           <div style={{ color: '#888' }}>Wins</div>
         </div>
-        <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
+        <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: '2rem' }}>❌ {totals.losses || 0}</div>
           <div style={{ color: '#888' }}>Losses</div>
         </div>
-        <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
+        <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: '2rem' }}>➖ {totals.breakevens || 0}</div>
           <div style={{ color: '#888' }}>Breakeven</div>
         </div>
@@ -77,7 +77,7 @@ export default function PnLPage() {
           <h2 style={{ fontSize: '1.1rem', marginBottom: 12 }}>By Category</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 32 }}>
             {byCategory.map(c => (
-              <div key={c.category} style={{ background: '#1a1a24', padding: 16, borderRadius: 8 }}>
+              <div key={c.category} style={{ background: '#1a1a22', padding: 16, borderRadius: 8 }}>
                 <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{c.category}</div>
                 <div style={{ fontSize: '0.85rem', color: '#888' }}>
                   {c.products} products · {c.wins} wins<br />
@@ -108,7 +108,7 @@ export default function PnLPage() {
           {products.map((p, i) => {
             const pProfit = (p.total_revenue || 0) - (p.total_ad_spend || 0);
             return (
-              <tr key={i} style={{ borderBottom: '1px solid #1a1a24' }}>
+              <tr key={i} style={{ borderBottom: '1px solid #1a1a22' }}>
                 <td style={{ padding: 8 }}>{p.keyword}</td>
                 <td style={{ textAlign: 'center', padding: 8 }}>{p.score?.toFixed(0) || '-'}</td>
                 <td style={{ textAlign: 'right', padding: 8, color: '#22c55e' }}>${(p.total_revenue || 0).toFixed(2)}</td>
@@ -130,7 +130,7 @@ export default function PnLPage() {
 
 function MetricCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div style={{ background: '#1a1a24', padding: 16, borderRadius: 8, textAlign: 'center' }}>
+    <div style={{ background: '#1a1a22', padding: 16, borderRadius: 8, textAlign: 'center' }}>
       <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color }}>{value}</div>
       <div style={{ fontSize: '0.75rem', color: '#888' }}>{label}</div>
     </div>

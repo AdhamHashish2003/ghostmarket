@@ -1,46 +1,16 @@
-import { getDb } from '@/lib/db';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
-export default function PnLPage() {
-  const db = getDb();
-
-  // Aggregates
-  const agg = db.prepare(`
-    SELECT COALESCE(SUM(total_revenue),0) as rev, COALESCE(SUM(total_ad_spend),0) as spend,
-           COALESCE(SUM(total_revenue - total_ad_spend),0) as profit,
-           COALESCE(SUM(total_orders),0) as orders
-    FROM products
-  `).get() as { rev: number; spend: number; profit: number; orders: number };
-
-  const revenue = agg.rev;
-  const adSpend = agg.spend;
-  const profit = agg.profit;
-  const orders = agg.orders;
-  const roas = adSpend > 0 ? revenue / adSpend : 0;
-
-  // Win/loss counts
-  const outcomeCounts = db.prepare(
-    "SELECT outcome_label, COUNT(*) as cnt FROM products WHERE outcome_label IS NOT NULL GROUP BY outcome_label"
-  ).all() as Array<{ outcome_label: string; cnt: number }>;
-
-  const outcomeMap: Record<string, number> = {};
-  for (const o of outcomeCounts) {
-    outcomeMap[o.outcome_label] = o.cnt;
-  }
-  const wins = outcomeMap['win'] || 0;
-  const losses = outcomeMap['loss'] || 0;
-  const breakevens = outcomeMap['breakeven'] || 0;
-  const totalLabeled = wins + losses + breakevens;
-  const winRate = totalLabeled > 0 ? ((wins / totalLabeled) * 100).toFixed(0) : '0';
-
-  // Per-product P&L
-  const perProduct = db.prepare(`
-    SELECT id, keyword, total_revenue, total_ad_spend, (total_revenue - total_ad_spend) as profit,
-           CASE WHEN total_ad_spend > 0 THEN total_revenue / total_ad_spend ELSE NULL END as roas,
-           outcome_label
-    FROM products WHERE total_revenue > 0 OR total_ad_spend > 0 ORDER BY total_revenue DESC
-  `).all() as Array<{
+export default async function PnLPage() {
+  let revenue = 0;
+  let adSpend = 0;
+  let profit = 0;
+  let orders = 0;
+  let wins = 0;
+  let losses = 0;
+  let breakevens = 0;
+  let perProduct: Array<{
     id: string;
     keyword: string;
     total_revenue: number;
@@ -48,8 +18,67 @@ export default function PnLPage() {
     profit: number;
     roas: number | null;
     outcome_label: string | null;
-  }>;
+  }> = [];
 
+  if (canUseLocalDb()) {
+    const { getDb } = await import('@/lib/db');
+    const db = getDb();
+
+    // Aggregates
+    const agg = db.prepare(`
+      SELECT COALESCE(SUM(total_revenue),0) as rev, COALESCE(SUM(total_ad_spend),0) as spend,
+             COALESCE(SUM(total_revenue - total_ad_spend),0) as profit,
+             COALESCE(SUM(total_orders),0) as orders
+      FROM products
+    `).get() as { rev: number; spend: number; profit: number; orders: number };
+
+    revenue = agg.rev;
+    adSpend = agg.spend;
+    profit = agg.profit;
+    orders = agg.orders;
+
+    // Win/loss counts
+    const outcomeCounts = db.prepare(
+      "SELECT outcome_label, COUNT(*) as cnt FROM products WHERE outcome_label IS NOT NULL GROUP BY outcome_label"
+    ).all() as Array<{ outcome_label: string; cnt: number }>;
+
+    const outcomeMap: Record<string, number> = {};
+    for (const o of outcomeCounts) {
+      outcomeMap[o.outcome_label] = o.cnt;
+    }
+    wins = outcomeMap['win'] || 0;
+    losses = outcomeMap['loss'] || 0;
+    breakevens = outcomeMap['breakeven'] || 0;
+
+    // Per-product P&L
+    perProduct = db.prepare(`
+      SELECT id, keyword, total_revenue, total_ad_spend, (total_revenue - total_ad_spend) as profit,
+             CASE WHEN total_ad_spend > 0 THEN total_revenue / total_ad_spend ELSE NULL END as roas,
+             outcome_label
+      FROM products WHERE total_revenue > 0 OR total_ad_spend > 0 ORDER BY total_revenue DESC
+    `).all() as typeof perProduct;
+  } else {
+    const data = await fetchOrchestrator<{
+      perProduct: typeof perProduct;
+      aggregate: { revenue: number; adSpend: number; profit: number; orders: number; wins: number; losses: number; breakevens: number };
+      daily: unknown;
+    }>('/api/pnl');
+
+    if (data.aggregate) {
+      revenue = data.aggregate.revenue || 0;
+      adSpend = data.aggregate.adSpend || 0;
+      profit = data.aggregate.profit || 0;
+      orders = data.aggregate.orders || 0;
+      wins = data.aggregate.wins || 0;
+      losses = data.aggregate.losses || 0;
+      breakevens = data.aggregate.breakevens || 0;
+    }
+    perProduct = data.perProduct || [];
+  }
+
+  const roas = adSpend > 0 ? revenue / adSpend : 0;
+  const totalLabeled = wins + losses + breakevens;
+  const winRate = totalLabeled > 0 ? ((wins / totalLabeled) * 100).toFixed(0) : '0';
   const hasFinancialData = revenue > 0 || adSpend > 0;
 
   return (
@@ -92,8 +121,8 @@ export default function PnLPage() {
       {/* No data message */}
       {!hasFinancialData && (
         <div style={{
-          background: '#111118',
-          border: '1px solid #1a1a24',
+          background: '#08080c',
+          border: '1px solid #1a1a22',
           borderRadius: 8,
           padding: '24px 20px',
           textAlign: 'center',
@@ -119,7 +148,7 @@ export default function PnLPage() {
           { label: 'BREAKEVEN', count: breakevens, color: '#ffaa00' },
         ].map(item => (
           <div key={item.label} style={{
-            background: '#111118',
+            background: '#08080c',
             border: `1px solid ${item.color}33`,
             borderRadius: 8,
             padding: '20px 16px',
@@ -161,8 +190,8 @@ export default function PnLPage() {
         <div>
           <SectionLabel>Product Performance</SectionLabel>
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             overflow: 'hidden',
           }}>
@@ -173,7 +202,7 @@ export default function PnLPage() {
               fontSize: '0.75rem',
             }}>
               <thead>
-                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Product</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Revenue</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Ad Spend</th>
@@ -187,8 +216,8 @@ export default function PnLPage() {
                   const profitVal = p.profit || 0;
                   const outcomeColors: Record<string, string> = { win: '#00ff66', loss: '#ff3344', breakeven: '#ffaa00' };
                   return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid #1a1a2444' }}>
-                      <td style={{ padding: '8px 14px', color: '#00f0ff', fontWeight: 600 }}>
+                    <tr key={p.id} style={{ borderBottom: '1px solid #1a1a2244' }}>
+                      <td style={{ padding: '8px 14px', color: '#00FFFF', fontWeight: 600 }}>
                         {p.keyword}
                       </td>
                       <td style={{ padding: '8px 14px', textAlign: 'right', color: '#00ff66', fontWeight: 600 }}>
@@ -233,8 +262,8 @@ function MetricCardInline({ label, value, color, icon }: {
 }) {
   return (
     <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
+      background: '#08080c',
+      border: '1px solid #1a1a22',
       borderRadius: 8,
       padding: '16px 20px',
       minWidth: 0,

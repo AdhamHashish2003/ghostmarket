@@ -22,8 +22,8 @@ interface NeonChartProps {
 }
 
 const CYBER_COLORS = [
-  '#00f0ff', // cyan
-  '#ff00aa', // magenta
+  '#00FFFF', // cyan
+  '#FF6B00', // magenta
   '#00ff66', // green
   '#ffaa00', // amber
   '#ff3344', // red
@@ -118,9 +118,9 @@ export default function NeonChart({ type, data, options = {}, height = 280 }: Ne
           if (!ds.backgroundColor) {
             baseStyle.backgroundColor = CYBER_COLORS.slice(0, ds.data.length);
           }
-          baseStyle.borderColor = '#111118';
+          baseStyle.borderColor = '#08080c';
           baseStyle.borderWidth = 2;
-          baseStyle.hoverBorderColor = '#00f0ff';
+          baseStyle.hoverBorderColor = '#00FFFF';
         }
 
         return baseStyle;
@@ -146,10 +146,10 @@ export default function NeonChart({ type, data, options = {}, height = 280 }: Ne
           },
         },
         tooltip: {
-          backgroundColor: '#111118ee',
+          backgroundColor: '#08080cee',
           titleColor: '#e0e0e0',
           bodyColor: '#e0e0e0',
-          borderColor: '#1a1a24',
+          borderColor: '#1a1a22',
           borderWidth: 1,
           titleFont: { family: 'monospace', size: 11 },
           bodyFont: { family: 'monospace', size: 11 },
@@ -161,7 +161,7 @@ export default function NeonChart({ type, data, options = {}, height = 280 }: Ne
       scales: type !== 'doughnut' ? {
         x: {
           grid: {
-            color: '#1a1a2444',
+            color: '#1a1a2244',
             drawBorder: false,
           },
           ticks: {
@@ -170,12 +170,12 @@ export default function NeonChart({ type, data, options = {}, height = 280 }: Ne
             maxRotation: 45,
           },
           border: {
-            color: '#1a1a24',
+            color: '#1a1a22',
           },
         },
         y: {
           grid: {
-            color: '#1a1a2444',
+            color: '#1a1a2244',
             drawBorder: false,
           },
           ticks: {
@@ -183,7 +183,7 @@ export default function NeonChart({ type, data, options = {}, height = 280 }: Ne
             font: { family: 'monospace', size: 10 },
           },
           border: {
-            color: '#1a1a24',
+            color: '#1a1a22',
           },
         },
       } : undefined,
@@ -214,8 +214,8 @@ export default function NeonChart({ type, data, options = {}, height = 280 }: Ne
 
   return (
     <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
+      background: '#08080c',
+      border: '1px solid #1a1a22',
       borderRadius: 8,
       padding: 16,
       position: 'relative',

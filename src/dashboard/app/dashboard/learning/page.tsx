@@ -1,14 +1,9 @@
-import { getDb } from '@/lib/db';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
-export default function LearningPage() {
-  const db = getDb();
-
-  // Learning cycles
-  const cycles = db.prepare(
-    'SELECT * FROM learning_cycles ORDER BY created_at DESC LIMIT 20'
-  ).all() as Array<{
+export default async function LearningPage() {
+  let cycles: Array<{
     id: number;
     cycle_type: string;
     model_version_after: string;
@@ -18,37 +13,62 @@ export default function LearningPage() {
     deployed: number;
     created_at: string;
     strategy_reflection: string | null;
-  }>;
-
-  // Label distribution
-  const labelDistribution = db.prepare(
-    "SELECT outcome_label, COUNT(*) as count FROM products WHERE outcome_label IS NOT NULL GROUP BY outcome_label"
-  ).all() as Array<{ outcome_label: string; count: number }>;
-
-  // Source hit rates
+  }> = [];
+  let labelDistribution: Array<{ outcome_label: string; count: number }> = [];
   let sourceHitRates: Array<{ source: string; total: number; wins: number }> = [];
-  try {
-    sourceHitRates = db.prepare(`
-      SELECT ts.source, COUNT(*) as total,
-        SUM(CASE WHEN ts.eventual_outcome = 'win' THEN 1 ELSE 0 END) as wins
-      FROM trend_signals ts WHERE ts.eventual_outcome IS NOT NULL GROUP BY ts.source
-    `).all() as Array<{ source: string; total: number; wins: number }>;
-  } catch { /* table may not have eventual_outcome column */ }
-
-  // Labeled count
-  const labeledRow = db.prepare(
-    "SELECT COUNT(*) as cnt FROM products WHERE outcome_label IS NOT NULL"
-  ).get() as { cnt: number };
-  const labeledCount = labeledRow.cnt;
-
-  // QLoRA pairs
+  let labeledCount = 0;
   let qloraPairs = 0;
-  try {
-    const qloraRow = db.prepare(
-      "SELECT COUNT(*) as cnt FROM llm_calls WHERE outcome_quality IN ('keep', 'flip')"
+
+  if (canUseLocalDb()) {
+    const { getDb } = await import('@/lib/db');
+    const db = getDb();
+
+    cycles = db.prepare(
+      'SELECT * FROM learning_cycles ORDER BY created_at DESC LIMIT 20'
+    ).all() as typeof cycles;
+
+    labelDistribution = db.prepare(
+      "SELECT outcome_label, COUNT(*) as count FROM products WHERE outcome_label IS NOT NULL GROUP BY outcome_label"
+    ).all() as typeof labelDistribution;
+
+    try {
+      sourceHitRates = db.prepare(`
+        SELECT ts.source, COUNT(*) as total,
+          SUM(CASE WHEN ts.eventual_outcome = 'win' THEN 1 ELSE 0 END) as wins
+        FROM trend_signals ts WHERE ts.eventual_outcome IS NOT NULL GROUP BY ts.source
+      `).all() as typeof sourceHitRates;
+    } catch { /* table may not have eventual_outcome column */ }
+
+    const labeledRow = db.prepare(
+      "SELECT COUNT(*) as cnt FROM products WHERE outcome_label IS NOT NULL"
     ).get() as { cnt: number };
-    qloraPairs = qloraRow.cnt;
-  } catch { /* ok */ }
+    labeledCount = labeledRow.cnt;
+
+    try {
+      const qloraRow = db.prepare(
+        "SELECT COUNT(*) as cnt FROM llm_calls WHERE outcome_quality IN ('keep', 'flip')"
+      ).get() as { cnt: number };
+      qloraPairs = qloraRow.cnt;
+    } catch { /* ok */ }
+  } else {
+    const data = await fetchOrchestrator<{
+      cycles: typeof cycles;
+      featureImportance: unknown;
+      sourceHitRates: typeof sourceHitRates;
+      strategy: unknown;
+      currentModel: unknown;
+      accuracyTrend: unknown;
+    }>('/api/learning');
+
+    cycles = data.cycles || [];
+    sourceHitRates = data.sourceHitRates || [];
+
+    // Derive labelDistribution and labeledCount from cycles data if available
+    // The orchestrator may not return these directly, so set defaults
+    labelDistribution = [];
+    labeledCount = 0;
+    qloraPairs = 0;
+  }
 
   // Strategy reflection from latest cycle
   const latestReflection = cycles.find(c => c.strategy_reflection)?.strategy_reflection || null;
@@ -103,7 +123,7 @@ export default function LearningPage() {
               const color = colors[l.outcome_label] || '#666';
               return (
                 <div key={l.outcome_label} style={{
-                  background: '#111118',
+                  background: '#08080c',
                   border: `1px solid ${color}33`,
                   borderRadius: 8,
                   padding: '16px 14px',
@@ -148,8 +168,8 @@ export default function LearningPage() {
         <div style={{ marginBottom: 28 }}>
           <SectionLabel>Source Hit Rates</SectionLabel>
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             overflow: 'hidden',
           }}>
@@ -160,7 +180,7 @@ export default function LearningPage() {
               fontSize: '0.75rem',
             }}>
               <thead>
-                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Wins</th>
@@ -172,8 +192,8 @@ export default function LearningPage() {
                   const rate = s.total > 0 ? (s.wins / s.total * 100) : 0;
                   const rateColor = rate > 40 ? '#00ff66' : rate > 20 ? '#ffaa00' : '#ff3344';
                   return (
-                    <tr key={s.source} style={{ borderBottom: '1px solid #1a1a2444' }}>
-                      <td style={{ padding: '8px 14px', color: '#00f0ff', fontWeight: 600 }}>{s.source}</td>
+                    <tr key={s.source} style={{ borderBottom: '1px solid #1a1a2244' }}>
+                      <td style={{ padding: '8px 14px', color: '#00FFFF', fontWeight: 600 }}>{s.source}</td>
                       <td style={{ padding: '8px 14px', textAlign: 'center', color: '#aaa' }}>{s.total}</td>
                       <td style={{ padding: '8px 14px', textAlign: 'center', color: '#00ff66' }}>{s.wins}</td>
                       <td style={{ padding: '8px 14px', textAlign: 'center', color: rateColor, fontWeight: 700 }}>
@@ -193,8 +213,8 @@ export default function LearningPage() {
         <div style={{ marginBottom: 28 }}>
           <SectionLabel>Latest Strategy Reflection</SectionLabel>
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             padding: '18px 20px',
             fontFamily: "'JetBrains Mono', monospace",
@@ -202,7 +222,7 @@ export default function LearningPage() {
             lineHeight: 1.7,
             color: '#aaa',
             whiteSpace: 'pre-wrap',
-            borderLeft: '3px solid #ff00aa44',
+            borderLeft: '3px solid #FF6B0044',
           }}>
             {latestReflection}
           </div>
@@ -213,8 +233,8 @@ export default function LearningPage() {
       <div>
         <SectionLabel>Training History</SectionLabel>
         <div style={{
-          background: '#111118',
-          border: '1px solid #1a1a24',
+          background: '#08080c',
+          border: '1px solid #1a1a22',
           borderRadius: 8,
           overflow: 'hidden',
         }}>
@@ -225,7 +245,7 @@ export default function LearningPage() {
             fontSize: '0.75rem',
           }}>
             <thead>
-              <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+              <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                 <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Date</th>
                 <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Type</th>
                 <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Version</th>
@@ -237,9 +257,9 @@ export default function LearningPage() {
             </thead>
             <tbody>
               {cycles.map((c, i) => {
-                const typeColors: Record<string, string> = { xgboost: '#00f0ff', qlora: '#ff00aa', reflection: '#ffaa00' };
+                const typeColors: Record<string, string> = { xgboost: '#00FFFF', qlora: '#FF6B00', reflection: '#ffaa00' };
                 return (
-                  <tr key={i} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                  <tr key={i} style={{ borderBottom: '1px solid #1a1a2244' }}>
                     <td style={{ padding: '8px 14px', color: '#888', fontSize: '0.7rem' }}>
                       {new Date(c.created_at).toLocaleString()}
                     </td>
@@ -324,7 +344,7 @@ function StatusCard({ label, value, threshold, met }: {
 
   return (
     <div style={{
-      background: '#111118',
+      background: '#08080c',
       border: `1px solid ${color}33`,
       borderRadius: 8,
       padding: '16px 14px',

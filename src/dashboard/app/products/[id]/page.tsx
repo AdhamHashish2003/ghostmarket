@@ -33,7 +33,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
         <Section title="Score Breakdown">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
             {Object.entries(breakdown).map(([key, value]) => (
-              <div key={key} style={{ background: '#1a1a24', padding: 12, borderRadius: 6 }}>
+              <div key={key} style={{ background: '#1a1a22', padding: 12, borderRadius: 6 }}>
                 <div style={{ fontSize: '0.75rem', color: '#888' }}>{key.replace(/_/g, ' ')}</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{Number(value).toFixed(0)}</div>
               </div>
@@ -45,7 +45,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       {/* Signals */}
       <Section title={`Trend Signals (${signals.length})`}>
         {signals.map((s, i) => (
-          <div key={i} style={{ background: '#1a1a24', padding: 12, borderRadius: 6, marginBottom: 8 }}>
+          <div key={i} style={{ background: '#1a1a22', padding: 12, borderRadius: 6, marginBottom: 8 }}>
             <b>{String(s.source)}</b> · Strength: {s.raw_signal_strength != null ? Number(s.raw_signal_strength).toFixed(2) : '?'} · Velocity: {String(s.trend_velocity || '?')}
             {s.source_url ? <> · <a href={String(s.source_url)} target="_blank" style={{ color: '#60a5fa' }}>Link</a></> : null}
           </div>
@@ -55,7 +55,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       {/* Suppliers */}
       <Section title={`Suppliers (${suppliers.length})`}>
         {suppliers.map((s, i) => (
-          <div key={i} style={{ background: '#1a1a24', padding: 12, borderRadius: 6, marginBottom: 8, border: s.is_best ? '1px solid #22c55e' : '1px solid transparent' }}>
+          <div key={i} style={{ background: '#1a1a22', padding: 12, borderRadius: 6, marginBottom: 8, border: s.is_best ? '1px solid #22c55e' : '1px solid transparent' }}>
             <b>{String(s.platform)}</b> {s.is_best ? '← BEST' : ''} ·
             ${s.unit_cost != null ? Number(s.unit_cost).toFixed(2) : '?'} + ${s.shipping_cost != null ? Number(s.shipping_cost).toFixed(2) : '?'} = <b>${s.landed_cost != null ? Number(s.landed_cost).toFixed(2) : '?'}</b> ·
             Margin: {s.margin_pct != null ? Number(s.margin_pct).toFixed(0) : '?'}% ·
@@ -68,7 +68,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       {/* Brand Kit */}
       {brandKit ? (
         <Section title="Brand Kit">
-          <div style={{ background: '#1a1a24', padding: 16, borderRadius: 6 }}>
+          <div style={{ background: '#1a1a22', padding: 16, borderRadius: 6 }}>
             <div><b>Name:</b> {String(brandKit.brand_name)}</div>
             <div><b>Bio:</b> {String(brandKit.instagram_bio)}</div>
             <div><b>Positioning:</b> {String(brandKit.page_description)}</div>
@@ -87,7 +87,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       {pages.length > 0 ? (
         <Section title={`Landing Pages (${pages.length})`}>
           {pages.map((p, i) => (
-            <div key={i} style={{ background: '#1a1a24', padding: 12, borderRadius: 6, marginBottom: 8 }}>
+            <div key={i} style={{ background: '#1a1a22', padding: 12, borderRadius: 6, marginBottom: 8 }}>
               Variant {String(p.variant_id)} ({String(p.copy_approach)}) ·
               {p.url ? <a href={String(p.url)} target="_blank" style={{ color: '#60a5fa' }}>Visit</a> : 'Not deployed'} ·
               Conv rate: {p.conversion_rate != null ? Number(p.conversion_rate).toFixed(3) : 'N/A'}
@@ -110,7 +110,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
       {decisions.length > 0 ? (
         <Section title="Operator Decisions">
           {decisions.map((d, i) => (
-            <div key={i} style={{ background: '#1a1a24', padding: 8, borderRadius: 4, marginBottom: 4 }}>
+            <div key={i} style={{ background: '#1a1a22', padding: 8, borderRadius: 4, marginBottom: 4 }}>
               {String(d.decision)} · {new Date(String(d.created_at)).toLocaleString()}
               {d.modification_notes ? <> · Notes: {String(d.modification_notes)}</> : null}
             </div>
@@ -132,7 +132,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: '#1a1a24', padding: 16, borderRadius: 6, textAlign: 'center' }}>
+    <div style={{ background: '#1a1a22', padding: 16, borderRadius: 6, textAlign: 'center' }}>
       <div style={{ fontSize: '0.75rem', color: '#888' }}>{label}</div>
       <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>{value}</div>
     </div>

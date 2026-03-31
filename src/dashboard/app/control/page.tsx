@@ -96,7 +96,7 @@ export default function ControlPanel() {
       <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
         {(['health', 'db', 'files', 'errors'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
-            padding: '8px 20px', background: tab === t ? '#333' : '#1a1a24',
+            padding: '8px 20px', background: tab === t ? '#333' : '#1a1a22',
             color: tab === t ? '#fff' : '#888', border: '1px solid #333',
             borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', textTransform: 'capitalize',
           }}>{t}{t === 'errors' && errors.length > 0 ? ` (${errors.length})` : ''}</button>
@@ -115,7 +115,7 @@ export default function ControlPanel() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
             {health.map(h => (
               <div key={h.name} style={{
-                background: '#1a1a24', padding: 16, borderRadius: 8,
+                background: '#1a1a22', padding: 16, borderRadius: 8,
                 borderLeft: `4px solid ${STATUS_COLORS[h.status]}`,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -140,7 +140,7 @@ export default function ControlPanel() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             {tables.map(t => (
               <button key={t.table} onClick={() => fetchTableData(t.table)} style={{
-                padding: '6px 14px', background: selectedTable === t.table ? '#3b82f6' : '#1a1a24',
+                padding: '6px 14px', background: selectedTable === t.table ? '#3b82f6' : '#1a1a22',
                 color: selectedTable === t.table ? '#fff' : '#aaa', border: '1px solid #333',
                 borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem',
               }}>{t.table} <span style={{ color: '#666' }}>({t.rows})</span></button>
@@ -162,7 +162,7 @@ export default function ControlPanel() {
                   )}
                   <tbody>
                     {tableRows.map((row, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #1a1a24' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid #1a1a22' }}>
                         {Object.values(row as Record<string, unknown>).map((v, j) => (
                           <td key={j} style={{ padding: 6, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {v === null ? <span style={{ color: '#555' }}>null</span> : String(v).slice(0, 100)}
@@ -195,7 +195,7 @@ export default function ControlPanel() {
             <div>
               {fileEntries.map(e => (
                 <div key={e.name} onClick={() => fetchFile(filePath ? `${filePath}/${e.name}` : e.name)}
-                  style={{ padding: '6px 12px', cursor: 'pointer', borderBottom: '1px solid #1a1a24', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
+                  style={{ padding: '6px 12px', cursor: 'pointer', borderBottom: '1px solid #1a1a22', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
                   <span>{e.isDir ? '📁 ' : '📄 '}{e.name}</span>
                   {!e.isDir && <span style={{ color: '#555' }}>{(e.size / 1024).toFixed(1)}KB</span>}
                 </div>
@@ -216,7 +216,7 @@ export default function ControlPanel() {
           <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: 12 }}>Auto-refreshing every 10s · {errors.length} errors/warnings</div>
           {errors.map((e, i) => (
             <div key={i} style={{
-              background: '#1a1a24', padding: 10, borderRadius: 6, marginBottom: 4, fontSize: '0.8rem',
+              background: '#1a1a22', padding: 10, borderRadius: 6, marginBottom: 4, fontSize: '0.8rem',
               borderLeft: `3px solid ${e.severity === 'error' || e.severity === 'critical' ? '#ef4444' : '#f59e0b'}`,
             }}>
               <span style={{ color: '#888' }}>[{e.agent}]</span> {e.message}

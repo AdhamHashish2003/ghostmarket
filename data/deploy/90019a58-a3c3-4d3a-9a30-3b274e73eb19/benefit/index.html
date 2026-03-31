@@ -7,24 +7,47 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, sans-serif; color: #222; line-height: 1.6; }
-    .hero { background: #87CEEB; color: white; padding: 60px 20px; text-align: center; }
+    .hero { background: #1a1a2e; color: white; padding: 60px 20px; text-align: center; }
     .hero h1 { font-size: 2.5rem; margin-bottom: 16px; max-width: 600px; margin-left: auto; margin-right: auto; }
     .hero p { font-size: 1.2rem; opacity: 0.9; max-width: 500px; margin: 0 auto 32px; }
     .hero .price { font-size: 2rem; font-weight: bold; margin-bottom: 24px; }
     .hero .price .original { text-decoration: line-through; opacity: 0.6; font-size: 1.2rem; margin-right: 8px; }
-    .cta { display: inline-block; background: #FFFFFF; color: white; padding: 16px 48px; border-radius: 8px; font-size: 1.2rem; font-weight: bold; text-decoration: none; transition: transform 0.2s; }
+    .cta { display: inline-block; background: #FF6B35; color: white; padding: 16px 48px; border-radius: 8px; font-size: 1.2rem; font-weight: bold; text-decoration: none; transition: transform 0.2s; }
     .cta:hover { transform: scale(1.05); }
     .benefits { padding: 60px 20px; max-width: 600px; margin: 0 auto; }
     .benefits h2 { font-size: 1.8rem; margin-bottom: 24px; text-align: center; }
     .benefits ul { list-style: none; }
     .benefits li { padding: 12px 0; padding-left: 32px; position: relative; font-size: 1.1rem; }
-    .benefits li::before { content: "✓"; position: absolute; left: 0; color: #FFFFFF; font-weight: bold; }
+    .benefits li::before { content: "✓"; position: absolute; left: 0; color: #22C55E; font-weight: bold; }
     .social-proof { background: #f8f9fa; padding: 40px 20px; text-align: center; }
     .social-proof p { font-size: 1.1rem; color: #555; max-width: 500px; margin: 0 auto; }
-    .urgency { background: #FFFFFF; color: white; padding: 20px; text-align: center; font-weight: bold; }
+    .urgency { background: #FF6B35; color: white; padding: 20px; text-align: center; font-weight: bold; }
     .final-cta { padding: 60px 20px; text-align: center; }
-    .final-cta .cta { background: #87CEEB; }
+    .final-cta .cta { background: #1a1a2e; }
     .brand { padding: 20px; text-align: center; font-size: 0.9rem; color: #999; }
+  
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .hero { padding: 40px 16px; }
+      .hero h1 { font-size: 1.8rem; }
+      .hero p { font-size: 1rem; }
+      .hero .price { font-size: 1.6rem; }
+      .cta { display: block; width: 100%; max-width: 320px; margin: 0 auto; text-align: center; padding: 16px 20px; font-size: 1.1rem; }
+      .benefits { padding: 32px 16px; }
+      .benefits h2 { font-size: 1.4rem; }
+      .benefits li { font-size: 1rem; padding-left: 28px; }
+      .social-proof { padding: 28px 16px; }
+      .social-proof p { font-size: 1rem; }
+      .urgency { padding: 16px; font-size: 0.95rem; }
+      .final-cta { padding: 32px 16px; }
+      .final-cta h2 { font-size: 1.4rem; margin-bottom: 16px; }
+    }
+    @media (max-width: 480px) {
+      .hero h1 { font-size: 1.5rem; }
+      .hero .price { font-size: 1.4rem; }
+      .cta { font-size: 1rem; padding: 14px 16px; }
+    }
+
   </style>
 </head>
 <body>

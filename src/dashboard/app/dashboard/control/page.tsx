@@ -109,11 +109,11 @@ export default function ControlPage() {
             onClick={fetchHealth}
             disabled={healthLoading}
             style={{
-              background: healthLoading ? '#111118' : '#00f0ff11',
-              border: '1px solid #00f0ff44',
+              background: healthLoading ? '#08080c' : '#00FFFF11',
+              border: '1px solid #00FFFF44',
               borderRadius: 6,
               padding: '6px 16px',
-              color: healthLoading ? '#333' : '#00f0ff',
+              color: healthLoading ? '#333' : '#00FFFF',
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: '0.7rem',
               fontWeight: 600,
@@ -132,7 +132,7 @@ export default function ControlPage() {
         }}>
           {health.map(h => (
             <div key={h.name} style={{
-              background: '#111118',
+              background: '#08080c',
               border: `1px solid ${STATUS_COLORS[h.status]}33`,
               borderRadius: 8,
               padding: '14px 16px',
@@ -193,8 +193,8 @@ export default function ControlPage() {
           ))}
           {health.length === 0 && !healthLoading && (
             <div style={{
-              background: '#111118',
-              border: '1px solid #1a1a24',
+              background: '#08080c',
+              border: '1px solid #1a1a22',
               borderRadius: 8,
               padding: '30px 20px',
               textAlign: 'center',
@@ -218,8 +218,8 @@ export default function ControlPage() {
           gap: 10,
         }}>
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             padding: '16px',
           }}>
@@ -237,15 +237,15 @@ export default function ControlPage() {
               disabled={telegramStatus === 'sending'}
               style={{
                 background: telegramStatus === 'success' ? '#00ff6622' :
-                  telegramStatus === 'error' ? '#ff334422' : '#ff00aa11',
+                  telegramStatus === 'error' ? '#ff334422' : '#FF6B0011',
                 border: `1px solid ${
                   telegramStatus === 'success' ? '#00ff6644' :
-                  telegramStatus === 'error' ? '#ff334444' : '#ff00aa44'
+                  telegramStatus === 'error' ? '#ff334444' : '#FF6B0044'
                 }`,
                 borderRadius: 6,
                 padding: '8px 16px',
                 color: telegramStatus === 'success' ? '#00ff66' :
-                  telegramStatus === 'error' ? '#ff3344' : '#ff00aa',
+                  telegramStatus === 'error' ? '#ff3344' : '#FF6B00',
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: '0.7rem',
                 fontWeight: 600,
@@ -273,16 +273,16 @@ export default function ControlPage() {
           {agents.map(agent => {
             const status = triggerStatus[agent] || '';
             const agentColors: Record<string, string> = {
-              scout: '#00f0ff',
-              scorer: '#ff00aa',
+              scout: '#00FFFF',
+              scorer: '#FF6B00',
               builder: '#ffaa00',
               learner: '#8b5cf6',
             };
-            const color = agentColors[agent] || '#00f0ff';
+            const color = agentColors[agent] || '#00FFFF';
 
             return (
               <div key={agent} style={{
-                background: '#111118',
+                background: '#08080c',
                 border: `1px solid ${color}33`,
                 borderRadius: 8,
                 padding: '16px',
@@ -346,8 +346,8 @@ export default function ControlPage() {
       <div>
         <SectionLabel>Pipeline Diagnostics</SectionLabel>
         <div style={{
-          background: '#111118',
-          border: '1px solid #1a1a24',
+          background: '#08080c',
+          border: '1px solid #1a1a22',
           borderRadius: 8,
           padding: '20px',
         }}>
@@ -362,11 +362,11 @@ export default function ControlPage() {
           <button
             onClick={fetchHealth}
             style={{
-              background: '#00f0ff11',
-              border: '1px solid #00f0ff44',
+              background: '#00FFFF11',
+              border: '1px solid #00FFFF44',
               borderRadius: 6,
               padding: '10px 24px',
-              color: '#00f0ff',
+              color: '#00FFFF',
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: '0.75rem',
               fontWeight: 600,

@@ -8,12 +8,13 @@ import json
 import logging
 import os
 import pickle
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from shared.training import (
     get_db,
     get_labeled_product_count,
@@ -25,12 +26,22 @@ from shared.training import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [Scorer] %(message)s")
 log = logging.getLogger("scorer")
 
+PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 MODELS_DIR = Path("/models")
 XGBOOST_MODEL_PATH = MODELS_DIR / "xgboost_scorer.pkl"
-XGBOOST_THRESHOLD = 50  # Minimum labeled products before using XGBoost
+BACKTEST_MODEL_PATH = PROJECT_ROOT / "backtest" / "models" / "xgboost_v0" / "model.json"
+XGBOOST_THRESHOLD = 50  # Minimum labeled products before using retrained XGBoost
 
-SCORE_THRESHOLD = 65
-HIGH_PRIORITY_THRESHOLD = 90
+# Features the backtest model expects (in order)
+BACKTEST_FEATURES = [
+    "price", "margin_pct", "price_tier", "rating",
+    "cat_home_decor", "cat_gadgets", "cat_fitness", "cat_kitchen",
+    "cat_car_accessories", "cat_pet_products",
+    "trend_velocity", "peak_to_current", "current_interest",
+]
+
+SCORE_THRESHOLD = 55
+HIGH_PRIORITY_THRESHOLD = 80
 
 SEED_CATEGORIES = {"home_decor", "gadgets", "fitness", "kitchen", "car_accessories", "pet_products"}
 SEED_CATEGORY_BONUS = 5.0  # 5% bonus for seed categories
@@ -44,6 +55,20 @@ WEIGHTS = {
     "content_potential": 0.10,
     "cross_source_validation": 0.10,
     "seasonality_fit": 0.05,
+}
+
+# Per-fulfillment-type weight overrides
+WEIGHTS_BY_TYPE: dict[str, dict[str, float]] = {
+    "pod": {  # POD: content/design matters most, fulfillment is easy (US warehouse)
+        "trend_velocity": 0.20,
+        "margin_potential": 0.15,
+        "competition_level": 0.10,
+        "fulfillment_ease": 0.05,
+        "content_potential": 0.30,
+        "cross_source_validation": 0.10,
+        "seasonality_fit": 0.10,
+    },
+    "dropship": WEIGHTS,  # Default
 }
 
 # Try to load adjusted weights from file
@@ -109,141 +134,304 @@ def score_margin_potential(suppliers: list[dict[str, Any]]) -> float:
         return max(margin, 10.0)
 
 
-def score_competition_level(signals: list[dict[str, Any]]) -> float:
-    """Score based on competition (lower competition = higher score)."""
+def score_competition_level(signals: list[dict[str, Any]], product_id: str, category: str | None) -> float:
+    """Score based on market saturation — fewer similar products = blue ocean."""
+    # Check ad counts if available
     ad_counts = [s.get("competing_ads_count", 0) for s in signals if s.get("competing_ads_count")]
+    if ad_counts:
+        avg_ads = sum(ad_counts) / len(ad_counts)
+        if avg_ads <= 5:
+            return 95.0
+        elif avg_ads <= 20:
+            return 75.0
+        elif avg_ads <= 50:
+            return 45.0
+        return 20.0
 
-    if not ad_counts:
-        return 60.0  # Unknown competition = medium
+    # Fallback: count how many similar products exist in same category
+    with get_db() as conn:
+        similar = conn.execute(
+            "SELECT COUNT(*) as cnt FROM products WHERE category = ? AND id != ?",
+            [category or '', product_id],
+        ).fetchone()
+    similar_count = similar["cnt"] if similar else 0
 
-    avg_ads = sum(ad_counts) / len(ad_counts)
-    # 0-5 ads = 100 (blue ocean), 5-20 = 70, 20-50 = 50, 50+ = 20
-    if avg_ads <= 5:
-        return 100.0
-    elif avg_ads <= 20:
-        return 80.0 - (avg_ads - 5) * 0.67
-    elif avg_ads <= 50:
-        return 50.0 - (avg_ads - 20) * 1
-    else:
-        return max(20.0 - (avg_ads - 50) * 0.2, 5.0)
+    if similar_count <= 2:
+        return 85.0  # Low competition in this niche
+    elif similar_count <= 5:
+        return 65.0
+    elif similar_count <= 10:
+        return 45.0
+    return 30.0
 
 
 def score_fulfillment_ease(suppliers: list[dict[str, Any]], method: str | None) -> float:
-    """Score based on shipping speed, warehouse location, supplier reliability."""
+    """Score based on warehouse, shipping cost, speed, and reliability."""
     if not suppliers:
-        return 20.0
+        return 30.0
 
     best = [s for s in suppliers if s.get("is_best")]
     s = best[0] if best else suppliers[0]
 
-    score = 40.0  # Base
-    if s.get("warehouse") == "US":
-        score += 30.0
-    if (s.get("seller_rating") or 0) >= 4.5:
-        score += 15.0
-    if (s.get("shipping_days_max") or 30) <= 10:
-        score += 15.0
+    warehouse = (s.get("warehouse") or "").upper()
+    rating = s.get("seller_rating") or 0
+    ship_max = s.get("shipping_days_max") or 20
+    ship_cost = s.get("shipping_cost") or 5.0
+    landed = s.get("landed_cost") or 99
+
+    # Warehouse location (primary)
+    if warehouse == "US":
+        score = 90.0
+    elif warehouse == "CN" and ship_max <= 10:
+        score = 70.0  # CN ePacket/express
+    elif warehouse == "CN":
+        score = 45.0  # CN standard
+    else:
+        score = 50.0
+
+    # Shipping cost granularity (CN products vary a lot here)
+    if warehouse == "CN":
+        if ship_cost <= 2.0:
+            score += 15.0  # Free/very cheap shipping
+        elif ship_cost <= 3.5:
+            score += 8.0   # Reasonable
+        elif ship_cost <= 5.0:
+            score += 0.0   # Standard
+        else:
+            score -= 10.0  # Expensive shipping
+
+    # Rating
+    if rating >= 4.5:
+        score += 8.0
+    elif rating >= 4.2:
+        score += 4.0
+    elif rating < 3.5 and rating > 0:
+        score -= 10.0
+
+    # Fulfillment method
     if method == "dropship":
-        score += 10.0
-    elif method == "pod":
         score += 5.0
 
-    return min(score, 100.0)
+    # Expensive items are harder to impulse-buy
+    if landed > 30:
+        score -= 8.0
+    elif landed < 8:
+        score += 5.0  # Cheap = easy margin at scale
+
+    return max(min(score, 100.0), 10.0)
 
 
 def score_content_potential(keyword: str, signals: list[dict[str, Any]]) -> float:
-    """Score based on visual appeal and content-friendliness.
-    Heuristic based on keyword analysis and engagement signals.
-    """
-    score = 50.0
-
-    # Products that demo well on video score higher
-    visual_keywords = ["led", "lamp", "light", "glow", "color", "projector", "mirror", "art", "neon",
-                       "sunset", "cloud", "aesthetic", "decor", "display"]
+    """Score based on visual appeal and viral/shareable potential."""
     kw_lower = keyword.lower()
-    visual_matches = sum(1 for vk in visual_keywords if vk in kw_lower)
-    score += visual_matches * 10
+    title_words = set(re.findall(r'\b[a-z]+\b', kw_lower))
 
-    # High engagement rate signals content-friendly
+    # High-content products (visual, demonstrable, "wow factor")
+    high_visual = {"led", "lamp", "light", "glow", "projector", "neon", "sunset",
+                   "cloud", "galaxy", "star", "smart", "mini", "color", "aesthetic",
+                   "mirror", "display", "ring", "drone"}
+    visual_matches = len(title_words & high_visual)
+
+    # Commodity products (functional, not shareable)
+    commodity = {"organizer", "rack", "mat", "bands", "board", "container",
+                 "storage", "bag", "case", "cover", "holder", "stand"}
+    commodity_matches = len(title_words & commodity)
+
+    if visual_matches >= 2:
+        score = 90.0
+    elif visual_matches == 1:
+        score = 75.0
+    elif commodity_matches >= 1:
+        score = 40.0
+    else:
+        score = 55.0
+
+    # Engagement rate boost
     for s in signals:
-        eng = s.get("avg_engagement_rate", 0)
-        if eng and eng > 0.05:
-            score += 20
+        eng = s.get("avg_engagement_rate") or 0
+        if eng > 0.8:
+            score += 10
+        elif eng > 0.5:
+            score += 5
 
     return min(score, 100.0)
 
 
-def score_cross_source_validation(signals: list[dict[str, Any]]) -> float:
-    """More sources = more confidence. 3+ sources = strong buy."""
+def score_cross_source_validation(signals: list[dict[str, Any]], keyword: str) -> float:
+    """More sources AND stronger signals = more confidence."""
     sources = set(s.get("source") for s in signals)
-    count = len(sources)
+    source_count = len(sources)
 
-    if count >= 4:
-        return 100.0
-    elif count == 3:
-        return 85.0
-    elif count == 2:
-        return 60.0
+    # Also check for cross-source hits in the DB for similar keywords
+    with get_db() as conn:
+        kw_words = keyword.lower().split()[:2]
+        cross_hits = 0
+        for word in kw_words:
+            if len(word) < 3:
+                continue
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT source) as cnt FROM trend_signals WHERE product_keyword LIKE ?",
+                [f"%{word}%"],
+            ).fetchone()
+            cross_hits = max(cross_hits, row["cnt"] if row else 0)
+
+    total_sources = max(source_count, cross_hits)
+
+    # Also factor in signal strength
+    avg_strength = sum(s.get("raw_signal_strength", 0.5) for s in signals) / max(len(signals), 1)
+
+    if total_sources >= 4:
+        base = 95.0
+    elif total_sources == 3:
+        base = 80.0
+    elif total_sources == 2:
+        base = 65.0
     else:
-        return 30.0
+        base = 40.0
+
+    # Boost for strong signals
+    if avg_strength > 0.7:
+        base += 10
+    elif avg_strength < 0.3:
+        base -= 10
+
+    return min(max(base, 10.0), 100.0)
 
 
 def score_seasonality_fit(keyword: str, category: str | None) -> float:
-    """Basic seasonality check. Evergreen products score higher."""
-    # Seasonal keywords
-    seasonal = {
-        "christmas": [11, 12],
-        "halloween": [9, 10],
-        "valentine": [1, 2],
-        "summer": [5, 6, 7],
-        "winter": [11, 12, 1],
-        "spring": [3, 4, 5],
-        "back to school": [7, 8],
-        "pool": [5, 6, 7, 8],
-        "snow": [11, 12, 1, 2],
-    }
-
+    """Score based on seasonal alignment. Spring=March-May now."""
     current_month = int(time.strftime("%m"))
     kw_lower = keyword.lower()
 
+    # Explicit seasonal keywords
+    seasonal = {
+        "christmas": [11, 12], "halloween": [9, 10], "valentine": [1, 2],
+        "summer": [5, 6, 7], "winter": [11, 12, 1], "spring": [3, 4, 5],
+        "pool": [5, 6, 7, 8], "snow": [11, 12, 1, 2], "beach": [5, 6, 7, 8],
+    }
     for term, months in seasonal.items():
         if term in kw_lower:
-            if current_month in months:
-                return 90.0  # In season
-            return 20.0  # Out of season
+            return 90.0 if current_month in months else 25.0
 
-    return 70.0  # Evergreen = good
+    # Category-based seasonality (current: March = early spring)
+    cat = (category or "").lower()
+    spring_summer_cats = {"fitness", "outdoor", "car_accessories", "beauty"}
+    fall_winter_cats = {"home_decor"}
+    evergreen_cats = {"gadgets", "kitchen", "pet_products"}
+
+    if current_month in [3, 4, 5]:  # Spring
+        if cat in spring_summer_cats:
+            return 85.0  # Spring favors fitness/outdoor
+        if cat in fall_winter_cats:
+            return 55.0  # Home decor is more fall/winter
+        if cat in evergreen_cats:
+            return 70.0
+    elif current_month in [6, 7, 8]:  # Summer
+        if cat in spring_summer_cats:
+            return 90.0
+        if cat in fall_winter_cats:
+            return 45.0
+    elif current_month in [9, 10, 11]:  # Fall
+        if cat in fall_winter_cats:
+            return 85.0
+        if cat in spring_summer_cats:
+            return 50.0
+    elif current_month in [12, 1, 2]:  # Winter
+        if cat in fall_winter_cats:
+            return 90.0
+        if cat in spring_summer_cats:
+            return 40.0
+
+    return 65.0  # Default neutral
 
 
 # ============================================================
 # XGBoost Scoring (after 50 labeled products)
 # ============================================================
 
-def try_xgboost_score(features: dict[str, float]) -> float | None:
-    """Attempt XGBoost prediction. Returns None if model not available."""
-    labeled_count = get_labeled_product_count()
-    if labeled_count < XGBOOST_THRESHOLD:
-        return None
+def try_xgboost_score(
+    product: dict[str, Any],
+    suppliers: list[dict[str, Any]],
+    signals: list[dict[str, Any]],
+) -> tuple[float | None, str]:
+    """Attempt XGBoost prediction. Returns (score, model_version) or (None, '')."""
+    import numpy as np
 
-    if not XGBOOST_MODEL_PATH.exists():
-        return None
+    # Try backtest model first (always available, 84.5% accuracy)
+    model_path = None
+    model_version = ""
+
+    if BACKTEST_MODEL_PATH.exists():
+        model_path = BACKTEST_MODEL_PATH
+        model_version = "xgb_v0"
+    elif XGBOOST_MODEL_PATH.exists() and get_labeled_product_count() >= XGBOOST_THRESHOLD:
+        model_path = XGBOOST_MODEL_PATH
+        model_version = _get_model_version()
+
+    if not model_path:
+        return None, ""
 
     try:
-        import numpy as np
-        with open(XGBOOST_MODEL_PATH, "rb") as f:
-            model = pickle.load(f)
+        import xgboost as xgb
 
-        feature_names = sorted(features.keys())
-        X = np.array([[features[f] for f in feature_names]])
-        prediction = model.predict_proba(X)[0]
+        # Build feature vector matching backtest training features
+        best_supplier = next((s for s in suppliers if s.get("is_best")), suppliers[0] if suppliers else None)
+        price = best_supplier["landed_cost"] if best_supplier else 10.0
+        margin = best_supplier.get("margin_pct", 50.0) if best_supplier else 50.0
+        rating = best_supplier.get("seller_rating", 4.0) if best_supplier else 4.0
+        if rating is None:
+            rating = 4.0
+        if margin is None:
+            margin = 50.0
 
-        # Convert win probability to 0-100 score
-        # prediction[1] = P(win), prediction[0] = P(loss)
-        win_prob = prediction[1] if len(prediction) > 1 else prediction[0]
-        return round(win_prob * 100, 1)
+        # Price tier: 0 = <$5, 1 = $5-$15, 2 = $15+
+        price_tier = 0 if price < 5 else (1 if price < 15 else 2)
+
+        # Category one-hot
+        category = (product.get("category") or "").lower().replace(" ", "_")
+        cats = {f"cat_{c}": 1.0 if category == c else 0.0 for c in
+                ["home_decor", "gadgets", "fitness", "kitchen", "car_accessories", "pet_products"]}
+
+        # Trend features
+        velocities = [s.get("raw_signal_strength", 0.5) for s in signals]
+        trend_vel = sum(velocities) / len(velocities) if velocities else 0.5
+        peak_to_current = 0.8  # Default: near peak
+        current_interest = trend_vel * 80  # Scale to ~0-80 range
+
+        features = {
+            "price": price,
+            "margin_pct": margin,
+            "price_tier": float(price_tier),
+            "rating": rating,
+            **cats,
+            "trend_velocity": trend_vel,
+            "peak_to_current": peak_to_current,
+            "current_interest": current_interest,
+        }
+
+        X = np.array([[features[f] for f in BACKTEST_FEATURES]])
+
+        if str(model_path).endswith(".json"):
+            model = xgb.Booster()
+            model.load_model(str(model_path))
+            dmat = xgb.DMatrix(X, feature_names=BACKTEST_FEATURES)
+            win_prob = float(model.predict(dmat)[0])
+        else:
+            with open(model_path, "rb") as f:
+                model = pickle.load(f)
+            prediction = model.predict_proba(X)[0]
+            win_prob = prediction[1] if len(prediction) > 1 else prediction[0]
+
+        score = round(win_prob * 100, 1)
+        log.info(f"XGBoost ({model_version}): win_prob={win_prob:.3f} → score={score}")
+        return score, model_version
+
+    except ImportError:
+        log.warning("xgboost not installed, falling back to rule-based")
+        return None, ""
     except Exception as e:
-        log.warning(f"XGBoost scoring failed, falling back to rule-based: {e}")
-        return None
+        log.warning(f"XGBoost scoring failed: {e}")
+        return None, ""
 
 
 # ============================================================
@@ -270,32 +458,32 @@ def score_product(product_id: str) -> dict[str, Any] | None:
     category = product.get("category")
     method = product.get("fulfillment_method")
 
-    # Calculate all dimension scores
+    # Calculate all dimension scores (each uses REAL data, not hardcoded)
     breakdown = {
         "trend_velocity": round(score_trend_velocity(signals), 1),
         "margin_potential": round(score_margin_potential(suppliers), 1),
-        "competition_level": round(score_competition_level(signals), 1),
+        "competition_level": round(score_competition_level(signals, product_id, category), 1),
         "fulfillment_ease": round(score_fulfillment_ease(suppliers, method), 1),
         "content_potential": round(score_content_potential(keyword, signals), 1),
-        "cross_source_validation": round(score_cross_source_validation(signals), 1),
+        "cross_source_validation": round(score_cross_source_validation(signals, keyword), 1),
         "seasonality_fit": round(score_seasonality_fit(keyword, category), 1),
     }
 
-    # Try XGBoost first
-    xgb_score = try_xgboost_score(breakdown)
+    # Try XGBoost first (backtest model or retrained model)
+    xgb_score, xgb_version = try_xgboost_score(product, suppliers, signals)
     model_version = "rule_v1"
 
     if xgb_score is not None:
         # XGBoost available — use it but keep rule-based as sanity check floor
-        weights = load_weights()
+        weights = WEIGHTS_BY_TYPE.get(method or "dropship", load_weights())
         rule_score = sum(breakdown[dim] * weights[dim] for dim in weights)
 
         # Use XGBoost score but floor at 80% of rule-based score
         final_score = max(xgb_score, rule_score * 0.8)
-        model_version = _get_model_version()
+        model_version = xgb_version
     else:
-        # Rule-based scoring
-        weights = load_weights()
+        # Rule-based scoring with per-type weights
+        weights = WEIGHTS_BY_TYPE.get(method or "dropship", load_weights())
         final_score = sum(breakdown[dim] * weights[dim] for dim in weights)
 
     # Seed category bonus

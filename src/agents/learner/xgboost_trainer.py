@@ -19,13 +19,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 from xgboost import XGBClassifier
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from shared.training import get_db, get_xgboost_training_data, get_labeled_product_count, get_source_hit_rates, log_training_event
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [Learner-XGB] %(message)s")
 log = logging.getLogger("learner-xgb")
 
-MODELS_DIR = Path(os.getenv("MODELS_DIR", "/models"))
+PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+MODELS_DIR = Path(os.getenv("MODELS_DIR", str(PROJECT_ROOT / "models")))
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = MODELS_DIR / "xgboost_scorer.pkl"
 META_PATH = MODELS_DIR / "xgboost_meta.json"
@@ -129,7 +130,11 @@ async def run_xgboost_training() -> dict[str, Any]:
     # Evaluate
     y_pred = model.predict(X_test)
     new_accuracy = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred, target_names=["loss", "win", "breakeven"], output_dict=True)
+    # Dynamically build target names from actual classes present
+    unique_labels = sorted(set(y_test) | set(y_pred))
+    label_map = {0: "loss", 1: "win", 2: "breakeven"}
+    target_names = [label_map.get(l, str(l)) for l in unique_labels]
+    report = classification_report(y_test, y_pred, target_names=target_names, output_dict=True)
 
     log.info(f"New model accuracy: {new_accuracy:.3f}")
 

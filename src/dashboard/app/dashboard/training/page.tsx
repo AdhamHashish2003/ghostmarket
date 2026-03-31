@@ -1,44 +1,14 @@
-import { getDb } from '@/lib/db';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
-export default function TrainingPage() {
-  const db = getDb();
-
-  // LLM calls by task type
-  const llmCallsByTask = db.prepare(`
-    SELECT task_type, COUNT(*) as cnt, ROUND(AVG(latency_ms)) as avg_latency
-    FROM llm_calls GROUP BY task_type ORDER BY cnt DESC
-  `).all() as Array<{ task_type: string; cnt: number; avg_latency: number }>;
-
-  // LLM calls by model
-  const llmCallsByModel = db.prepare(`
-    SELECT model_used, COUNT(*) as cnt FROM llm_calls GROUP BY model_used ORDER BY cnt DESC
-  `).all() as Array<{ model_used: string; cnt: number }>;
-
-  // Total LLM stats
-  const llmTotals = db.prepare(`
-    SELECT COUNT(*) as total, SUM(tokens_in) as total_tokens_in, SUM(tokens_out) as total_tokens_out FROM llm_calls
-  `).get() as { total: number; total_tokens_in: number; total_tokens_out: number };
-
-  // QLoRA pairs
-  const qloraPairs = db.prepare(`
-    SELECT outcome_quality, COUNT(*) as cnt FROM llm_calls WHERE outcome_quality IS NOT NULL GROUP BY outcome_quality
-  `).all() as Array<{ outcome_quality: string; cnt: number }>;
-
-  // Data quality
-  const dataQuality = db.prepare(`
-    SELECT COUNT(*) as total,
-           SUM(CASE WHEN outcome_label IS NOT NULL THEN 1 ELSE 0 END) as with_outcome,
-           SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as with_score
-    FROM products
-  `).get() as { total: number; with_outcome: number; with_score: number };
-
-  // Recent LLM calls
-  const recentCalls = db.prepare(`
-    SELECT id, task_type, model_used, tokens_in, tokens_out, latency_ms, created_at
-    FROM llm_calls ORDER BY created_at DESC LIMIT 10
-  `).all() as Array<{
+export default async function TrainingPage() {
+  let llmCallsByTask: Array<{ task_type: string; cnt: number; avg_latency: number }> = [];
+  let llmCallsByModel: Array<{ model_used: string; cnt: number }> = [];
+  let llmTotals: { total: number; total_tokens_in: number; total_tokens_out: number } = { total: 0, total_tokens_in: 0, total_tokens_out: 0 };
+  let qloraPairs: Array<{ outcome_quality: string; cnt: number }> = [];
+  let dataQuality: { total: number; with_outcome: number; with_score: number } = { total: 0, with_outcome: 0, with_score: 0 };
+  let recentCalls: Array<{
     id: number;
     task_type: string;
     model_used: string;
@@ -46,7 +16,93 @@ export default function TrainingPage() {
     tokens_out: number;
     latency_ms: number;
     created_at: string;
-  }>;
+  }> = [];
+
+  if (canUseLocalDb()) {
+    const { getDb } = await import('@/lib/db');
+    const db = getDb();
+
+    // LLM calls by task type
+    llmCallsByTask = db.prepare(`
+      SELECT task_type, COUNT(*) as cnt, ROUND(AVG(latency_ms)) as avg_latency
+      FROM llm_calls GROUP BY task_type ORDER BY cnt DESC
+    `).all() as typeof llmCallsByTask;
+
+    // LLM calls by model
+    llmCallsByModel = db.prepare(`
+      SELECT model_used, COUNT(*) as cnt FROM llm_calls GROUP BY model_used ORDER BY cnt DESC
+    `).all() as typeof llmCallsByModel;
+
+    // Total LLM stats
+    llmTotals = db.prepare(`
+      SELECT COUNT(*) as total, SUM(tokens_in) as total_tokens_in, SUM(tokens_out) as total_tokens_out FROM llm_calls
+    `).get() as typeof llmTotals;
+
+    // QLoRA pairs
+    qloraPairs = db.prepare(`
+      SELECT outcome_quality, COUNT(*) as cnt FROM llm_calls WHERE outcome_quality IS NOT NULL GROUP BY outcome_quality
+    `).all() as typeof qloraPairs;
+
+    // Data quality
+    dataQuality = db.prepare(`
+      SELECT COUNT(*) as total,
+             SUM(CASE WHEN outcome_label IS NOT NULL THEN 1 ELSE 0 END) as with_outcome,
+             SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as with_score
+      FROM products
+    `).get() as typeof dataQuality;
+
+    // Recent LLM calls
+    recentCalls = db.prepare(`
+      SELECT id, task_type, model_used, tokens_in, tokens_out, latency_ms, created_at
+      FROM llm_calls ORDER BY created_at DESC LIMIT 10
+    `).all() as typeof recentCalls;
+  } else {
+    const data = await fetchOrchestrator<{
+      callsByTask: typeof llmCallsByTask;
+      totals: typeof llmTotals;
+      labelDistribution: unknown;
+      qloraPairs: typeof qloraPairs;
+      unlabeled: unknown;
+      recentCalls: typeof recentCalls;
+    }>('/api/training');
+
+    const rawCalls = data.callsByTask || (data as Record<string, unknown>).llmCallsByTask || [];
+    llmCallsByTask = (rawCalls as Array<Record<string, unknown>>).map((c: Record<string, unknown>) => ({
+      task_type: String(c.task_type || ''),
+      cnt: Number(c.count || c.cnt || 0),
+      avg_latency: Number(c.avg_latency_ms || c.avg_latency || 0),
+    }));
+    const t = data.totals as Record<string, unknown> || {};
+    llmTotals = {
+      total: Number(t.totalCalls || t.total || 0),
+      total_tokens_in: Number(t.totalTokensIn || t.total_tokens_in || 0),
+      total_tokens_out: Number(t.totalTokensOut || t.total_tokens_out || 0),
+    };
+    const rawQlora = data.qloraPairs;
+    if (Array.isArray(rawQlora)) {
+      qloraPairs = rawQlora.map((q: Record<string, unknown>) => ({
+        outcome_quality: String(q.outcome_quality || q.training_version || ''),
+        cnt: Number(q.pairs || q.cnt || 0),
+      }));
+    } else if (rawQlora && typeof rawQlora === 'object') {
+      // Dashboard API format: {total_calls, keep_count, flip_count, ...}
+      const rq = rawQlora as Record<string, number>;
+      qloraPairs = [
+        { outcome_quality: 'keep', cnt: rq.keep_count || 0 },
+        { outcome_quality: 'flip', cnt: rq.flip_count || 0 },
+        { outcome_quality: 'discard', cnt: rq.discard_count || 0 },
+      ].filter(q => q.cnt > 0);
+    }
+    recentCalls = (data.recentCalls || []).map((c: Record<string, unknown>) => ({
+      id: Number(c.id || 0),
+      task_type: String(c.task_type || ''),
+      model_used: String(c.model_used || ''),
+      tokens_in: Number(c.tokens_in || 0),
+      tokens_out: Number(c.tokens_out || 0),
+      latency_ms: Number(c.latency_ms || 0),
+      created_at: String(c.created_at || ''),
+    }));
+  }
 
   const totalQloraPairs = qloraPairs
     .filter(q => q.outcome_quality === 'keep' || q.outcome_quality === 'flip')
@@ -90,7 +146,7 @@ export default function TrainingPage() {
           <VolumeCard label="Tokens In" value={llmTotals.total_tokens_in || 0} />
           <VolumeCard label="Tokens Out" value={llmTotals.total_tokens_out || 0} />
           <div style={{
-            background: '#111118',
+            background: '#08080c',
             border: '1px solid #8b5cf644',
             borderRadius: 8,
             padding: '14px 12px',
@@ -130,8 +186,8 @@ export default function TrainingPage() {
         <div>
           <SectionLabel>LLM Calls by Model</SectionLabel>
           <div style={{
-            background: '#111118',
-            border: '1px solid #1a1a24',
+            background: '#08080c',
+            border: '1px solid #1a1a22',
             borderRadius: 8,
             overflow: 'hidden',
           }}>
@@ -143,16 +199,16 @@ export default function TrainingPage() {
                 fontSize: '0.75rem',
               }}>
                 <thead>
-                  <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                  <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                     <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Model</th>
                     <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Count</th>
                   </tr>
                 </thead>
                 <tbody>
                   {llmCallsByModel.map((m, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #1a1a2444' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid #1a1a2244' }}>
                       <td style={{ padding: '8px 14px', color: '#888' }}>{m.model_used?.split('/').pop() || m.model_used || '-'}</td>
-                      <td style={{ padding: '8px 14px', textAlign: 'center', color: '#00f0ff', fontWeight: 600 }}>{m.cnt}</td>
+                      <td style={{ padding: '8px 14px', textAlign: 'center', color: '#00FFFF', fontWeight: 600 }}>{m.cnt}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -177,7 +233,7 @@ export default function TrainingPage() {
               const color = colors[q.outcome_quality] || '#666';
               return (
                 <div key={q.outcome_quality} style={{
-                  background: '#111118',
+                  background: '#08080c',
                   border: `1px solid ${color}33`,
                   borderRadius: 8,
                   padding: '16px 14px',
@@ -212,8 +268,8 @@ export default function TrainingPage() {
               );
             }) : (
               <div style={{
-                background: '#111118',
-                border: '1px solid #1a1a24',
+                background: '#08080c',
+                border: '1px solid #1a1a22',
                 borderRadius: 8,
                 padding: '30px 20px',
                 textAlign: 'center',
@@ -232,8 +288,8 @@ export default function TrainingPage() {
       <div style={{ marginBottom: 28 }}>
         <SectionLabel>LLM Call Statistics</SectionLabel>
         <div style={{
-          background: '#111118',
-          border: '1px solid #1a1a24',
+          background: '#08080c',
+          border: '1px solid #1a1a22',
           borderRadius: 8,
           overflow: 'hidden',
         }}>
@@ -245,7 +301,7 @@ export default function TrainingPage() {
               fontSize: '0.75rem',
             }}>
               <thead>
-                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Task Type</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Count</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Avg Latency</th>
@@ -253,8 +309,8 @@ export default function TrainingPage() {
               </thead>
               <tbody>
                 {llmCallsByTask.map((l, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #1a1a2444' }}>
-                    <td style={{ padding: '8px 14px', color: '#00f0ff' }}>{l.task_type}</td>
+                  <tr key={i} style={{ borderBottom: '1px solid #1a1a2244' }}>
+                    <td style={{ padding: '8px 14px', color: '#00FFFF' }}>{l.task_type}</td>
                     <td style={{ padding: '8px 14px', textAlign: 'center', color: '#aaa' }}>{l.cnt}</td>
                     <td style={{ padding: '8px 14px', textAlign: 'center', color: '#888' }}>
                       {l.avg_latency ? `${l.avg_latency}ms` : '-'}
@@ -280,7 +336,7 @@ export default function TrainingPage() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 8,
-            background: '#111118',
+            background: '#08080c',
             border: '1px solid #8b5cf644',
             borderRadius: 8,
             padding: '10px 20px',
@@ -300,8 +356,8 @@ export default function TrainingPage() {
       <div>
         <SectionLabel>Recent LLM Calls</SectionLabel>
         <div style={{
-          background: '#111118',
-          border: '1px solid #1a1a24',
+          background: '#08080c',
+          border: '1px solid #1a1a22',
           borderRadius: 8,
           overflow: 'hidden',
         }}>
@@ -313,7 +369,7 @@ export default function TrainingPage() {
               fontSize: '0.75rem',
             }}>
               <thead>
-                <tr style={{ background: '#0d0d14', borderBottom: '1px solid #1a1a24' }}>
+                <tr style={{ background: '#060608', borderBottom: '1px solid #1a1a22' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Task</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Model</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontSize: '0.65rem', textTransform: 'uppercase' }}>Tokens</th>
@@ -326,8 +382,8 @@ export default function TrainingPage() {
                   const totalTokens = (c.tokens_in || 0) + (c.tokens_out || 0);
                   const latencyColor = c.latency_ms > 5000 ? '#ff3344' : c.latency_ms > 2000 ? '#ffaa00' : '#00ff66';
                   return (
-                    <tr key={c.id} style={{ borderBottom: '1px solid #1a1a2444' }}>
-                      <td style={{ padding: '8px 14px', color: '#00f0ff', fontWeight: 600 }}>{c.task_type}</td>
+                    <tr key={c.id} style={{ borderBottom: '1px solid #1a1a2244' }}>
+                      <td style={{ padding: '8px 14px', color: '#00FFFF', fontWeight: 600 }}>{c.task_type}</td>
                       <td style={{ padding: '8px 14px', color: '#888' }}>{c.model_used?.split('/').pop() || '-'}</td>
                       <td style={{ padding: '8px 14px', textAlign: 'center', color: '#aaa' }}>{totalTokens.toLocaleString()}</td>
                       <td style={{ padding: '8px 14px', textAlign: 'center', color: latencyColor }}>
@@ -355,8 +411,8 @@ export default function TrainingPage() {
 function VolumeCard({ label, value }: { label: string; value: number }) {
   return (
     <div style={{
-      background: '#111118',
-      border: '1px solid #1a1a24',
+      background: '#08080c',
+      border: '1px solid #1a1a22',
       borderRadius: 8,
       padding: '14px 12px',
       textAlign: 'center',
@@ -366,14 +422,14 @@ function VolumeCard({ label, value }: { label: string; value: number }) {
       <div style={{
         position: 'absolute',
         top: 0, left: 0, right: 0, height: 2,
-        background: 'linear-gradient(90deg, transparent, #00f0ff44, transparent)',
+        background: 'linear-gradient(90deg, transparent, #00FFFF44, transparent)',
       }} />
       <div style={{
         fontSize: '1.2rem',
         fontWeight: 700,
         fontFamily: "'JetBrains Mono', monospace",
-        color: '#00f0ff',
-        textShadow: '0 0 10px #00f0ff33',
+        color: '#00FFFF',
+        textShadow: '0 0 10px #00FFFF33',
       }}>
         {value.toLocaleString()}
       </div>

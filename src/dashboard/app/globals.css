@@ -12,55 +12,55 @@
    CSS Custom Properties (Design Tokens)
    -------------------------------------------------------------------------- */
 :root {
-  /* --- Surface / Background --- */
-  --bg-void:          #0a0a0f;
-  --bg-surface:       #0d0d14;
-  --bg-elevated:      #12121c;
-  --bg-overlay:       #16162280;
-  --bg-card:          #0e0e18;
-  --bg-input:         #0c0c14;
+  /* --- Surface / Background — Pure Black War Room --- */
+  --bg-void:          #000000;
+  --bg-surface:       #060608;
+  --bg-elevated:      #0a0a0e;
+  --bg-overlay:       #0c0c1280;
+  --bg-card:          #08080c;
+  --bg-input:         #060608;
 
   /* --- Primary: Electric Cyan --- */
-  --cyan:             #00f0ff;
-  --cyan-dim:         #00f0ff99;
-  --cyan-ghost:       #00f0ff1a;
-  --cyan-glow:        0 0 8px #00f0ff66, 0 0 24px #00f0ff22;
-  --cyan-glow-strong: 0 0 12px #00f0ff99, 0 0 40px #00f0ff44, 0 0 80px #00f0ff11;
+  --cyan:             #00FFFF;
+  --cyan-dim:         #00FFFF99;
+  --cyan-ghost:       #00FFFF1a;
+  --cyan-glow:        0 0 8px #00FFFF44, 0 0 20px #00FFFF18;
+  --cyan-glow-strong: 0 0 12px #00FFFF66, 0 0 32px #00FFFF33, 0 0 64px #00FFFF11;
 
-  /* --- Secondary: Hot Magenta --- */
-  --magenta:          #ff00aa;
-  --magenta-dim:      #ff00aa99;
-  --magenta-ghost:    #ff00aa1a;
-  --magenta-glow:     0 0 8px #ff00aa66, 0 0 24px #ff00aa22;
+  /* --- Secondary: Ops Orange --- */
+  --magenta:          #FF6B00;
+  --magenta-dim:      #FF6B0099;
+  --magenta-ghost:    #FF6B001a;
+  --magenta-glow:     0 0 8px #FF6B0044, 0 0 20px #FF6B0018;
 
   /* --- Tertiary: Acid Green (Success) --- */
   --green:            #00ff66;
   --green-dim:        #00ff6699;
   --green-ghost:      #00ff661a;
-  --green-glow:       0 0 8px #00ff6666, 0 0 24px #00ff6622;
+  --green-glow:       0 0 8px #00ff6644, 0 0 20px #00ff6618;
 
   /* --- Warning: Amber --- */
-  --amber:            #ffaa00;
-  --amber-dim:        #ffaa0099;
-  --amber-ghost:      #ffaa001a;
-  --amber-glow:       0 0 8px #ffaa0066, 0 0 24px #ffaa0022;
+  --amber:            #FF6B00;
+  --amber-dim:        #FF6B0099;
+  --amber-ghost:      #FF6B001a;
+  --amber-glow:       0 0 8px #FF6B0044, 0 0 20px #FF6B0018;
 
   /* --- Error: Red --- */
   --red:              #ff3344;
   --red-dim:          #ff334499;
   --red-ghost:        #ff33441a;
-  --red-glow:         0 0 8px #ff334466, 0 0 24px #ff334422;
+  --red-glow:         0 0 8px #ff334444, 0 0 20px #ff334418;
 
   /* --- Text --- */
-  --text-primary:     #e0e0f0;
-  --text-secondary:   #8888aa;
-  --text-muted:       #555570;
+  --text-primary:     #e0e0e0;
+  --text-secondary:   #888899;
+  --text-muted:       #444455;
   --text-bright:      #ffffff;
 
   /* --- Borders --- */
-  --border:           #1a1a2e;
-  --border-glow:      #00f0ff33;
-  --border-hover:     #00f0ff66;
+  --border:           #1a1a22;
+  --border-glow:      #00FFFF33;
+  --border-hover:     #00FFFF55;
 
   /* --- Typography --- */
   --font-mono:        'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
@@ -124,6 +124,25 @@ body::after {
     rgba(0, 0, 0, 0.03) 2px,
     rgba(0, 0, 0, 0.03) 4px
   );
+}
+
+/* --------------------------------------------------------------------------
+   War Room: Card hover glow + cyan borders
+   -------------------------------------------------------------------------- */
+#gm-main div[style*="background: #08080c"],
+#gm-main div[style*="background:#08080c"] {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+#gm-main div[style*="background: #08080c"]:hover,
+#gm-main div[style*="background:#08080c"]:hover {
+  border-color: #00FFFF44 !important;
+  box-shadow: 0 0 15px #00FFFF0c, 0 0 30px #00FFFF06 !important;
+}
+
+/* Pipeline "AWAIT" pulse */
+@keyframes await-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.6; }
 }
 
 /* --------------------------------------------------------------------------
@@ -275,14 +294,14 @@ button:active, .btn:active {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #00f0ff22, #00f0ff11);
+  background: linear-gradient(135deg, #00FFFF22, #00FFFF11);
   border-color: var(--cyan-dim);
   color: var(--cyan);
   box-shadow: var(--cyan-glow);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #00f0ff33, #00f0ff22);
+  background: linear-gradient(135deg, #00FFFF33, #00FFFF22);
   box-shadow: var(--cyan-glow-strong);
 }
 
@@ -410,22 +429,22 @@ label {
 
 /* Card color variants */
 .card-cyan {
-  border-color: #00f0ff33;
-  box-shadow: inset 0 1px 0 0 #00f0ff11;
+  border-color: #00FFFF33;
+  box-shadow: inset 0 1px 0 0 #00FFFF11;
 }
 
 .card-cyan:hover {
-  box-shadow: var(--cyan-glow), inset 0 1px 0 0 #00f0ff22;
+  box-shadow: var(--cyan-glow), inset 0 1px 0 0 #00FFFF22;
 }
 
 .card-magenta {
-  border-color: #ff00aa33;
-  box-shadow: inset 0 1px 0 0 #ff00aa11;
+  border-color: #FF6B0033;
+  box-shadow: inset 0 1px 0 0 #FF6B0011;
 }
 
 .card-magenta:hover {
-  border-color: #ff00aa66;
-  box-shadow: var(--magenta-glow), inset 0 1px 0 0 #ff00aa22;
+  border-color: #FF6B0066;
+  box-shadow: var(--magenta-glow), inset 0 1px 0 0 #FF6B0022;
 }
 
 .card-green {
@@ -579,14 +598,14 @@ td.numeric, th.numeric {
   color: var(--cyan);
   border-color: var(--cyan-dim);
   background: var(--cyan-ghost);
-  text-shadow: 0 0 6px #00f0ff44;
+  text-shadow: 0 0 6px #00FFFF44;
 }
 
 .badge-magenta {
   color: var(--magenta);
   border-color: var(--magenta-dim);
   background: var(--magenta-ghost);
-  text-shadow: 0 0 6px #ff00aa44;
+  text-shadow: 0 0 6px #FF6B0044;
 }
 
 .badge-green, .badge-success {
@@ -697,7 +716,7 @@ td.numeric, th.numeric {
 .pipeline-node-active {
   border-color: var(--cyan-dim);
   box-shadow: var(--cyan-glow);
-  background: linear-gradient(180deg, #00f0ff08, transparent);
+  background: linear-gradient(180deg, #00FFFF08, transparent);
 }
 
 .pipeline-node-active .pipeline-node-label {
@@ -937,7 +956,7 @@ td.numeric, th.numeric {
   color: var(--cyan);
   background: var(--cyan-ghost);
   border-left-color: var(--cyan);
-  text-shadow: 0 0 8px #00f0ff33;
+  text-shadow: 0 0 8px #00FFFF33;
 }
 
 /* --------------------------------------------------------------------------
@@ -1200,28 +1219,205 @@ hr, .divider {
 /* --------------------------------------------------------------------------
    Responsive Breakpoints
    -------------------------------------------------------------------------- */
+
+/* --- Tablet (≤ 1024px) --- */
 @media (max-width: 1024px) {
-  .grid-4 { grid-template-columns: repeat(2, 1fr); }
-  .grid-3 { grid-template-columns: repeat(2, 1fr); }
-}
+  .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+  .grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
 
-@media (max-width: 768px) {
-  html { font-size: 13px; }
-  .grid-4,
-  .grid-3,
-  .grid-2 { grid-template-columns: 1fr; }
-
-  .sidebar { display: none; }
-
-  .pipeline {
-    flex-direction: column;
-    align-items: stretch;
+  #gm-sidebar {
+    width: 160px !important;
+    min-width: 160px !important;
+  }
+  #gm-main {
+    margin-left: 160px !important;
+    padding: 20px !important;
   }
 
-  .pipeline-connector {
-    width: 2px;
-    height: 24px;
-    align-self: center;
+  /* Collapse 5-col grids to 3 */
+  #gm-main [style*="repeat(5"] {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* --- Mobile (≤ 768px) --- */
+@media (max-width: 768px) {
+  html { font-size: 13px; }
+
+  /* ── Shell: stack vertically ── */
+  #gm-shell {
+    flex-direction: column !important;
+  }
+
+  /* ── Sidebar → horizontal top bar ── */
+  #gm-sidebar {
+    width: 100% !important;
+    min-width: 100% !important;
+    position: sticky !important;
+    top: 0 !important;
+    left: auto !important;
+    bottom: auto !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    padding: 0 !important;
+    border-right: none !important;
+    border-bottom: 1px solid #1a1a22 !important;
+    z-index: 100 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    background: #08080c !important;
+  }
+
+  /* Logo area: compact inline */
+  #gm-sidebar > div:first-child {
+    padding: 10px 14px !important;
+    border-bottom: none !important;
+    border-right: 1px solid #1a1a22;
+    white-space: nowrap;
+  }
+  #gm-sidebar > div:first-child > div:last-child {
+    display: none !important; /* hide "Neural Warfare v2" subtitle */
+  }
+
+  /* Nav items: horizontal scrollable row */
+  #gm-sidebar > div:nth-child(2) {
+    display: flex !important;
+    flex-direction: row !important;
+    padding: 0 !important;
+    overflow-x: auto !important;
+    flex: 1;
+    gap: 0;
+  }
+  #gm-sidebar > div:nth-child(2) a {
+    font-size: 0.7rem !important;
+    padding: 10px 12px !important;
+    white-space: nowrap !important;
+    border-left: none !important;
+    border-bottom: 2px solid transparent !important;
+  }
+  #gm-sidebar > div:nth-child(2) a span {
+    display: none !important; /* hide nav icons on mobile */
+  }
+
+  /* Status bar: hide on mobile */
+  #gm-sidebar > div:last-child {
+    display: none !important;
+  }
+
+  /* ── Main content: full width ── */
+  #gm-main {
+    margin-left: 0 !important;
+    padding: 14px !important;
+    width: 100% !important;
+    min-height: auto !important;
+  }
+
+  /* ── All grids: collapse to 2 columns ── */
+  #gm-main [style*="repeat(4"],
+  #gm-main [style*="repeat(5"],
+  #gm-main [style*="repeat(6"],
+  #gm-main [style*="1fr 2fr"],
+  .grid-4, .grid-3, .grid-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Auto-fill/auto-fit grids: lower the minmax */
+  #gm-main [style*="minmax(250px"],
+  #gm-main [style*="minmax(260px"],
+  #gm-main [style*="minmax(280px"] {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  }
+
+  /* ── Tables: horizontal scroll ── */
+  #gm-main table {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap !important;
+    font-size: 0.75rem !important;
+  }
+  #gm-main thead { display: table-header-group; }
+  #gm-main tbody { display: table-row-group; }
+  #gm-main tr { display: table-row; }
+  #gm-main th, #gm-main td {
+    padding: 6px 8px !important;
+  }
+
+  /* ── Pipeline hex grid ── */
+  #gm-main [style*="repeat(2, 1fr)"] {
+    gap: 8px !important;
+  }
+
+  /* ── Headings ── */
+  #gm-main h1 { font-size: 1.4rem !important; }
+  #gm-main h2 { font-size: 1.15rem !important; }
+  #gm-main h3 { font-size: 0.95rem !important; }
+
+  /* ── Cards: tighter ── */
+  #gm-main > div > div[style*="background"],
+  #gm-main > div > div > div[style*="background"] {
+    padding: 10px !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* ── Event feed / scrollables ── */
+  #gm-main [style*="maxHeight"],
+  #gm-main [style*="max-height"] {
+    max-height: 300px !important;
+    font-size: 0.72rem !important;
+  }
+
+  /* ── Action buttons ── */
+  #gm-main button {
+    min-height: 44px;
+    font-size: 0.78rem !important;
+    padding: 10px 12px !important;
+  }
+
+  /* ── Hide p5.js canvas on mobile (saves battery) ── */
+  canvas {
+    display: none !important;
+  }
+
+  /* ── Pipeline connectors ── */
+  .pipeline { flex-direction: column; align-items: stretch; }
+  .pipeline-connector { width: 2px; height: 24px; align-self: center; }
+}
+
+/* --- Small phones (≤ 480px) --- */
+@media (max-width: 480px) {
+  html { font-size: 12px; }
+
+  /* All grids: single column */
+  #gm-main [style*="repeat("],
+  #gm-main [style*="1fr 1fr"],
+  #gm-main [style*="1fr 2fr"],
+  .grid-4, .grid-3, .grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Auto-fill grids: single column */
+  #gm-main [style*="auto-fill"],
+  #gm-main [style*="auto-fit"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Even tighter padding */
+  #gm-main {
+    padding: 10px !important;
+  }
+
+  /* Tables even smaller */
+  #gm-main th, #gm-main td {
+    padding: 4px 6px !important;
+    font-size: 0.68rem !important;
+  }
+
+  /* Nav items: even smaller */
+  #gm-sidebar > div:nth-child(2) a {
+    font-size: 0.65rem !important;
+    padding: 8px 10px !important;
   }
 }
 

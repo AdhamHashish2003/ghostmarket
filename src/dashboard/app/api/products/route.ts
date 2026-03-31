@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isLocal, proxyToOrchestrator } from '@/lib/api-proxy';
 import Database from 'better-sqlite3';
 import path from 'path';
 
@@ -20,9 +21,10 @@ const VALID_SORT_FIELDS = ['score', 'created_at', 'revenue', 'total_revenue', 't
 const VALID_SORT_DIRS = ['asc', 'desc'];
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  if (!isLocal()) return proxyToOrchestrator(`/api/products?${searchParams.toString()}`);
   let db: Database.Database | null = null;
   try {
-    const { searchParams } = new URL(request.url);
 
     // Pagination
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));

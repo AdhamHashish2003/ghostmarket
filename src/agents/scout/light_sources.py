@@ -14,25 +14,45 @@ from datetime import datetime, timezone
 
 import httpx
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from shared.training import (
     create_product,
     find_product_by_keyword,
     log_system_event,
     log_trend_signal,
+    update_product,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [Scout-Light] %(message)s")
 log = logging.getLogger("scout-light")
 
-SEED_CATEGORIES = ["home decor", "gadgets", "fitness", "kitchen", "car accessories", "pet products"]
+SEED_CATEGORIES = ["home decor", "gadgets", "fitness", "kitchen", "car accessories", "pet products",
+                    "pod apparel", "pod home", "pod accessories"]
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    "home_decor": ["LED lamp", "wall art", "room decor", "aesthetic lamp", "cloud light", "neon sign", "sunset lamp"],
-    "gadgets": ["phone mount", "wireless charger", "mini projector", "portable speaker", "smart ring"],
-    "fitness": ["resistance bands", "massage gun", "yoga mat", "gym bag", "water bottle"],
-    "kitchen": ["knife set", "air fryer accessories", "spice organizer", "cutting board", "ice maker"],
-    "car_accessories": ["car phone mount", "car vacuum", "seat organizer", "dash cam", "LED strip car"],
-    "pet_products": ["pet camera", "dog toy", "cat tree", "pet bed", "automatic feeder"],
+    "home_decor": ["LED lamp", "wall art", "room decor", "aesthetic lamp", "cloud light", "neon sign", "sunset lamp",
+                   "star projector", "mushroom lamp", "galaxy projector", "floating shelf", "moon lamp", "lava lamp", "smart bulb"],
+    "gadgets": ["phone mount", "wireless charger", "mini projector", "portable speaker", "smart ring",
+                "ring light", "laptop stand", "power bank", "cable organizer", "magnetic phone mount", "wireless earbuds"],
+    "fitness": ["resistance bands", "massage gun", "yoga mat", "gym bag", "water bottle",
+                "posture corrector", "smart water bottle", "pull up bar", "foam roller"],
+    "kitchen": ["knife set", "air fryer accessories", "spice organizer", "cutting board", "ice maker",
+                "electric knife sharpener", "spice rack organizer", "milk frother", "sous vide"],
+    "car_accessories": ["car phone mount", "car vacuum", "seat organizer", "dash cam", "LED strip car",
+                        "phone mount car", "car air freshener", "trunk organizer"],
+    "pet_products": ["pet camera", "dog toy", "cat tree", "pet bed", "automatic feeder",
+                     "cat water fountain", "dog camera", "pet grooming brush"],
+    "beauty": ["LED mirror", "hair dryer", "facial steamer", "jade roller", "LED face mask"],
+    "outdoor": ["portable hammock", "camping lantern", "solar charger", "insulated water bottle"],
+    # --- POD / Print-on-Demand keywords ---
+    "pod_apparel": ["funny t-shirt", "graphic tee", "cat shirt", "dog mom shirt", "gym hoodie",
+                    "vintage tee", "anime shirt", "retro t-shirt", "dad joke shirt", "sarcastic tee",
+                    "custom hoodie", "tie dye shirt", "motivational shirt", "nurse shirt", "teacher shirt"],
+    "pod_home": ["funny mug", "cat mug", "dog mug", "coffee mug gift", "custom poster", "wall art print",
+                 "canvas print", "motivational poster", "funny poster", "throw pillow custom",
+                 "shower curtain funny", "custom blanket", "photo pillow", "pet portrait", "family portrait"],
+    "pod_accessories": ["custom phone case", "sticker pack", "laptop sticker", "vinyl sticker", "tote bag custom",
+                        "canvas tote bag", "custom hat", "embroidered hat", "pet bandana", "dog bandana",
+                        "custom keychain", "acrylic keychain", "enamel pin", "button pin", "mouse pad custom"],
 }
 
 # --- BUG 7 fix: non-product post filtering ---
@@ -49,6 +69,19 @@ NON_PRODUCT_KEYWORDS = {
     "nestle", "nestlé", "official statement", "children's book",
     "mammal", "species", "animal", "planet", "universe", "history",
     "century", "ancient", "medieval", "documentary",
+    "conference", "releases", "announces", "report", "scenes from",
+    "breaking", "unveils", "launches",
+    # Junk from expanded subreddits
+    "photo by", "by me", "my collection", "just bought", "knife", "gun",
+    "poop", "meme", "jumbotron", "cosplay", "tattoo", "artwork",
+}
+
+# News headline verbs: "Govee releases ...", "Apple announces ..."
+_NEWS_HEADLINE_VERBS = {
+    "releases", "announces", "unveils", "launches", "reports", "reveals",
+    "introduces", "partners", "acquires", "expands", "confirms", "denies",
+    "warns", "plans", "files", "sues", "settles", "recalls", "drops",
+    "updates", "ships", "debuts", "ditches", "adds", "cuts", "hikes",
 }
 
 NON_PRODUCT_PREFIXES = (
@@ -79,17 +112,30 @@ CATEGORY_MATCH_KEYWORDS: dict[str, list[str]] = {
                "curler", "dryer"],
     "outdoor": ["camping", "tent", "hammock", "grill", "cooler", "backpack",
                 "flashlight", "lantern"],
+    "pod_apparel": ["shirt", "tee", "hoodie", "sweatshirt", "jersey", "tank"],
+    "pod_home": ["mug", "poster", "canvas", "pillow", "blanket", "shower curtain", "tapestry", "coaster"],
+    "pod_accessories": ["sticker", "tote", "phone case", "keychain", "pin", "badge", "hat", "cap",
+                        "bandana", "mouse pad", "mousepad", "notebook"],
 }
 
 
 def _is_non_product_title(title: str) -> bool:
     """Return True if the title looks like a non-product post (BUG 7)."""
-    # Too long to be a product name
-    if len(title) > 60:
+    # Too long to be a product name (40 chars max)
+    if len(title) > 40:
         return True
 
     # Ends with a question mark (it's a question, not a product)
     if title.rstrip().endswith("?"):
+        return True
+
+    # Contains punctuation typical of sentences, not product names
+    if "." in title or "," in title:
+        return True
+
+    # Product keyword must be 2-4 words
+    word_count = len(title.split())
+    if word_count < 2 or word_count > 4:
         return True
 
     title_lower = title.lower()
@@ -104,8 +150,14 @@ def _is_non_product_title(title: str) -> bool:
         if title.startswith(prefix):
             return True
 
+    # News headline pattern: "Govee releases ...", "Apple announces ..."
+    words = title.split()
+    if len(words) >= 2 and words[0][0:1].isupper() and words[1].lower() in _NEWS_HEADLINE_VERBS:
+        return True
+
     # Must contain at least one word from any product category to be considered
-    title_lower = title_lower  # already computed above
+    # Use word-boundary matching to avoid "mat" matching inside "dermatologist"
+    title_words = set(re.findall(r'\b[a-z]+\b', title_lower))
     all_product_words = set()
     for keywords in CATEGORY_MATCH_KEYWORDS.values():
         all_product_words.update(keywords)
@@ -119,20 +171,49 @@ def _is_non_product_title(title: str) -> bool:
         "sensor", "detector", "alarm", "lock", "smart", "wireless",
         "bluetooth", "usb", "portable", "mini", "electric", "automatic",
         "solar", "rechargeable", "foldable", "adjustable", "waterproof",
+        # POD product words
+        "shirt", "tee", "hoodie", "sweatshirt", "poster", "sticker",
+        "canvas", "pillow", "blanket", "tapestry", "coaster", "tote",
+        "bandana", "keychain", "pin", "badge", "hat", "cap", "jersey",
+        "mousepad", "notebook", "portrait", "print", "custom", "funny",
+        "graphic", "vintage", "retro", "sarcastic", "motivational",
     })
-    if not any(pw in title_lower for pw in all_product_words):
+    # Single-word keywords: match as whole words only
+    # Multi-word keywords: match as substrings
+    has_product_word = False
+    for pw in all_product_words:
+        if " " in pw:
+            if pw in title_lower:
+                has_product_word = True
+                break
+        else:
+            if pw in title_words:
+                has_product_word = True
+                break
+    if not has_product_word:
         return True
 
     return False
 
 
 def _detect_category(title: str) -> str:
-    """Match title keywords to a product category (BUG 10). Returns category or 'other'."""
+    """Match title keywords to a product category (BUG 10). Returns category or 'other'.
+
+    Uses word-boundary matching so 'mat' doesn't match inside 'dermatologist'.
+    """
     title_lower = title.lower()
+    title_words = set(re.findall(r'\b[a-z]+\b', title_lower))
     best_category = "other"
     best_count = 0
     for category, keywords in CATEGORY_MATCH_KEYWORDS.items():
-        count = sum(1 for kw in keywords if kw in title_lower)
+        count = 0
+        for kw in keywords:
+            if " " in kw:
+                if kw in title_lower:
+                    count += 1
+            else:
+                if kw in title_words:
+                    count += 1
         if count > best_count:
             best_count = count
             best_category = category
@@ -226,11 +307,26 @@ def scrape_google_trends() -> list[dict]:
 # ============================================================
 
 REDDIT_FEEDS = [
+    # --- Original product discovery ---
     ("shutupandtakemymoney", "hot"),
     ("gadgets", "rising"),
     ("BuyItForLife", "hot"),
+    ("INEEEEDIT", "hot"),
+    ("ProductPorn", "hot"),
+    ("DesignPorn", "hot"),
+    ("Entrepreneur", "rising"),
+    ("AmazonFinds", "hot"),
+    # --- POD / Design / "I want this on a shirt" ---
+    ("DidntKnowIWantedThat", "hot"),
+    ("ATBGE", "hot"),
+    ("muglife", "hot"),
     ("coolguides", "hot"),
-    ("interestingasfuck", "hot"),
+    ("graphic_design", "hot"),
+    ("streetwear", "rising"),
+    ("stickers", "hot"),
+    ("EtsySellers", "rising"),
+    ("PrintOnDemand", "hot"),
+    ("FunnyAnimals", "hot"),
 ]
 
 
@@ -278,8 +374,12 @@ def scrape_reddit() -> list[dict]:
                 age_hours = max((time.time() - created_utc) / 3600, 0.1)
                 upvote_rate = score / age_hours
 
-                # Only surface posts with high velocity (>50 upvotes/hour) or high absolute score
-                if upvote_rate < 50 and score < 500:
+                # Lower threshold for POD/niche subs (smaller communities)
+                _POD_SUBS = {"muglife", "stickers", "PrintOnDemand", "EtsySellers", "ATBGE",
+                             "FunnyAnimals", "graphic_design", "streetwear", "DidntKnowIWantedThat"}
+                min_rate = 5 if sub_name in _POD_SUBS else 50
+                min_score = 25 if sub_name in _POD_SUBS else 500
+                if upvote_rate < min_rate and score < min_score:
                     continue
 
                 # Normalize strength: 100 upvotes/hr = 0.5, 500+ = 1.0
@@ -288,7 +388,7 @@ def scrape_reddit() -> list[dict]:
 
                 signals.append({
                     "source": "reddit",
-                    "product_keyword": title[:100],
+                    "product_keyword": title[:40].strip(),
                     "raw_signal_strength": strength,
                     "trend_velocity": velocity,
                     "source_url": f"https://reddit.com{permalink}",
@@ -314,6 +414,167 @@ def scrape_reddit() -> list[dict]:
 
 
 # ============================================================
+# Opportunity Analysis (LLM-powered classification)
+# ============================================================
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+NIM_API_KEY = os.getenv("NIM_API_KEY", "")
+
+# Quick heuristic: guess fulfillment type from keywords before LLM call
+_POD_KEYWORDS = {"mug", "shirt", "tee", "hoodie", "poster", "case", "sticker",
+                 "print", "custom", "design", "quote", "funny", "canvas", "pillow",
+                 "blanket", "tapestry", "coaster", "tote", "bandana", "keychain",
+                 "pin", "badge", "hat", "cap", "jersey", "tank", "sweatshirt",
+                 "mousepad", "notebook", "portrait", "art print", "wall art"}
+_DIGITAL_KEYWORDS = {"template", "preset", "wallpaper", "printable", "planner",
+                     "ebook", "guide", "download", "digital", "svg", "font"}
+
+
+def _guess_fulfillment(keyword: str) -> str:
+    """Quick heuristic guess before LLM call."""
+    words = set(keyword.lower().split())
+    if words & _DIGITAL_KEYWORDS:
+        return "digital"
+    if words & _POD_KEYWORDS:
+        return "pod"
+    return "dropship"
+
+
+def _call_analysis_llm(prompt: str) -> str | None:
+    """Call Groq or NIM for opportunity analysis. Returns raw text or None."""
+    headers_common = {"Content-Type": "application/json"}
+
+    # Try Groq first
+    if GROQ_API_KEY:
+        try:
+            resp = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={**headers_common, "Authorization": f"Bearer {GROQ_API_KEY}"},
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": "You are an e-commerce product analyst. Respond with valid JSON only."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.3, "max_tokens": 400,
+                },
+                timeout=20,
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass
+
+    # Fallback to NIM
+    if NIM_API_KEY:
+        try:
+            resp = httpx.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={**headers_common, "Authorization": f"Bearer {NIM_API_KEY}"},
+                json={
+                    "model": "meta/llama-3.3-70b-instruct",
+                    "messages": [
+                        {"role": "system", "content": "You are an e-commerce product analyst. Respond with valid JSON only."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.3, "max_tokens": 400,
+                },
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass
+
+    return None
+
+
+def analyze_opportunity(keyword: str, source: str, subreddit: str | None, upvotes: int | None) -> dict | None:
+    """Use LLM to turn a raw product signal into a structured opportunity.
+
+    Returns dict with: product_name, fulfillment_type, content_potential,
+    why_trending, target_audience, estimated_wholesale, estimated_retail,
+    pod_design_concept. Returns None if LLM unavailable.
+    """
+    context = f"Source: {source}"
+    if subreddit:
+        context += f" (r/{subreddit})"
+    if upvotes:
+        context += f", {upvotes} upvotes"
+
+    heuristic_type = _guess_fulfillment(keyword)
+
+    prompt = f"""Analyze this trending product signal and classify the opportunity.
+
+Signal: "{keyword}"
+{context}
+Heuristic guess: {heuristic_type}
+
+Respond with ONLY valid JSON:
+{{
+  "product_name": "<clean 2-4 word product name>",
+  "fulfillment_type": "dropship" | "pod" | "digital",
+  "content_potential": <1-10, would this go viral on TikTok/Instagram?>,
+  "why_trending": "<one sentence>",
+  "target_audience": "<who buys this>",
+  "estimated_wholesale": <number in USD, base/production cost>,
+  "estimated_retail": <number in USD, typical online store price>,
+  "pod_design_concept": "<if POD: describe the design concept, else null>"
+}}
+
+Rules:
+- fulfillment_type "pod" if it's a design/art/quote/meme on a physical product (mug, shirt, poster, case)
+- fulfillment_type "dropship" if it's a manufactured gadget/accessory with existing suppliers
+- fulfillment_type "digital" if it's a downloadable/template/preset
+- content_potential 8+ = visually stunning, demo-able, shareable
+- content_potential 3-5 = functional but boring
+- For POD: estimated_wholesale = Printful/Printify base cost ($5-25 depending on product)"""
+
+    text = _call_analysis_llm(prompt)
+    if not text:
+        # LLM unavailable — return heuristic-only analysis
+        return {
+            "product_name": keyword,
+            "fulfillment_type": heuristic_type,
+            "content_potential": 5,
+            "why_trending": "Unknown — LLM unavailable",
+            "target_audience": "General consumers",
+            "estimated_wholesale": None,
+            "estimated_retail": None,
+            "pod_design_concept": None,
+        }
+
+    try:
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\n?", "", text)
+            text = re.sub(r"\n?```$", "", text)
+        analysis = json.loads(text)
+        # Ensure required fields
+        analysis.setdefault("fulfillment_type", heuristic_type)
+        analysis.setdefault("content_potential", 5)
+        analysis.setdefault("product_name", keyword)
+        log.info(
+            f"  Opportunity: {analysis['product_name']} "
+            f"[{analysis['fulfillment_type']}] "
+            f"content={analysis['content_potential']}/10 "
+            f"${analysis.get('estimated_wholesale', '?')}→${analysis.get('estimated_retail', '?')}"
+        )
+        return analysis
+    except (json.JSONDecodeError, KeyError) as e:
+        log.warning(f"  LLM analysis parse failed for '{keyword}': {e}")
+        return {
+            "product_name": keyword,
+            "fulfillment_type": heuristic_type,
+            "content_potential": 5,
+            "why_trending": "Parse error",
+            "target_audience": "General",
+            "estimated_wholesale": None,
+            "estimated_retail": None,
+            "pod_design_concept": None,
+        }
+
+
+# ============================================================
 # Signal processing
 # ============================================================
 
@@ -331,6 +592,11 @@ def process_signals(signals: list[dict]) -> None:
         if not signal.get("category"):
             signal["category"] = _detect_category(keyword)
 
+        # Reject signals that don't match any known product category
+        if signal["category"] == "other":
+            log.debug(f"Rejected uncategorized signal: {keyword[:40]}")
+            continue
+
         # BUG 8 fix: deduplicate by source_url + product_keyword
         source_url = signal.get("source_url")
         if source_url:
@@ -343,9 +609,66 @@ def process_signals(signals: list[dict]) -> None:
                 log.debug(f"Skipping duplicate signal for {keyword}: {source_url}")
                 continue
 
-        # Find or create product
+        # Fuzzy duplicate detection: if keyword shares 2+ words with existing product in same category, skip
         product = find_product_by_keyword(keyword)
-        product_id = product["id"] if product else create_product(keyword, signal.get("category"))
+        if not product:
+            kw_words = set(keyword.lower().split())
+            with get_db() as conn:
+                existing = conn.execute(
+                    "SELECT keyword FROM products WHERE category = ?",
+                    [signal.get("category", "")],
+                ).fetchall()
+            is_fuzzy_dup = False
+            for row in existing:
+                existing_words = set(row["keyword"].lower().split())
+                shared = kw_words & existing_words
+                if len(shared) >= 2:
+                    log.debug(f"Fuzzy duplicate: '{keyword}' matches '{row['keyword']}' ({shared})")
+                    is_fuzzy_dup = True
+                    break
+            if is_fuzzy_dup:
+                continue
+
+        # LLM opportunity analysis (turns raw keyword into structured opportunity)
+        meta = signal.get("signal_metadata") or {}
+        subreddit = meta.get("subreddit")
+        upvotes = meta.get("score")
+        analysis = analyze_opportunity(keyword, signal["source"], subreddit, upvotes)
+
+        if analysis:
+            # Use the cleaned product name from LLM
+            cleaned_name = analysis.get("product_name") or keyword
+            if cleaned_name != keyword:
+                # Check dedup again with cleaned name
+                if find_product_by_keyword(cleaned_name):
+                    log.debug(f"Duplicate after cleaning: '{keyword}' → '{cleaned_name}'")
+                    continue
+                keyword = cleaned_name
+                signal["product_keyword"] = keyword
+
+            # Store analysis in signal metadata
+            signal.setdefault("signal_metadata", {})
+            if isinstance(signal["signal_metadata"], dict):
+                signal["signal_metadata"]["opportunity"] = analysis
+            signal["fulfillment_type"] = analysis.get("fulfillment_type", "dropship")
+
+            time.sleep(2)  # Rate limit between LLM calls
+
+        if product:
+            product_id = product["id"]
+            if analysis and analysis.get("fulfillment_type") and not product.get("fulfillment_method"):
+                # DB constraint: only 'dropship', 'pod', 'manual' — map 'digital' to 'pod'
+                ft = analysis["fulfillment_type"]
+                if ft == "digital":
+                    ft = "pod"
+                update_product(product_id, {"fulfillment_method": ft})
+        else:
+            product_id = create_product(keyword, signal.get("category"))
+            if analysis and analysis.get("fulfillment_type"):
+                ft = analysis["fulfillment_type"]
+                if ft == "digital":
+                    ft = "pod"
+                update_product(product_id, {"fulfillment_method": ft})
 
         # Determine cross-source hits
         with get_db() as conn:

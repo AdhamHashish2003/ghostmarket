@@ -145,6 +145,25 @@ module.exports = {
 
     // ─── Python Agents ─────────────────────────────────────────
     {
+      name: 'sourcer',
+      script: 'python3',
+      args: 'src/agents/sourcer/main.py',
+      cwd: __dirname,
+      interpreter: 'none',
+      env: {
+        ...commonEnv,
+        PYTHONPATH: '/mnt/c/Users/Adham/ghostmarket/src',
+      },
+      restart_delay: 10000,
+      max_restarts: 50,
+      autorestart: true,
+      watch: false,
+      error_file: path.join(LOGS_DIR, 'sourcer-error.log'),
+      out_file: path.join(LOGS_DIR, 'sourcer-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+    {
       name: 'scout-light',
       script: 'python3',
       args: 'src/agents/scout/light_sources.py',
@@ -152,7 +171,7 @@ module.exports = {
       interpreter: 'none',
       env: {
         ...commonEnv,
-        PYTHONPATH: path.resolve(__dirname, 'src'),
+        PYTHONPATH: '/mnt/c/Users/Adham/ghostmarket/src',
       },
       restart_delay: 10000,
       max_restarts: 50,
@@ -171,7 +190,7 @@ module.exports = {
       interpreter: 'none',
       env: {
         ...commonEnv,
-        PYTHONPATH: path.resolve(__dirname, 'src'),
+        PYTHONPATH: '/mnt/c/Users/Adham/ghostmarket/src',
       },
       restart_delay: 10000,
       max_restarts: 50,
@@ -183,10 +202,64 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
 
-    // ─── Cloudflare Tunnel ─────────────────────────────────────
+    // ─── Poster Agent (Buffer) — runs every 30 min ─────────────
+    {
+      name: 'poster',
+      script: 'python3',
+      args: 'src/agents/poster/main.py',
+      cwd: __dirname,
+      interpreter: 'none',
+      env: {
+        ...commonEnv,
+        PYTHONPATH: '/mnt/c/Users/Adham/ghostmarket/src',
+      },
+      cron_restart: '*/30 * * * *',
+      autorestart: false,
+      watch: false,
+      error_file: path.join(LOGS_DIR, 'poster-error.log'),
+      out_file: path.join(LOGS_DIR, 'poster-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+
+    // ─── MCP Server ──────────────────────────────────────────────
+    {
+      name: 'mcp-server',
+      script: 'node',
+      args: 'dist/index.js',
+      cwd: path.resolve(__dirname, 'ghostmarket-mcp-server'),
+      env: { ...commonEnv, MCP_PORT: '3001', ORCHESTRATOR_URL: 'http://localhost:4000' },
+      restart_delay: 5000,
+      max_restarts: 50,
+      autorestart: true,
+      watch: false,
+      error_file: path.join(LOGS_DIR, 'mcp-server-error.log'),
+      out_file: path.join(LOGS_DIR, 'mcp-server-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+
+    // ─── Tunnel Watchdog ───────────────────────────────────────
+    {
+      name: 'tunnel-watchdog',
+      script: 'node',
+      args: '--import tsx src/infra/tunnel-watchdog.ts',
+      cwd: __dirname,
+      env: commonEnv,
+      restart_delay: 10000,
+      max_restarts: 50,
+      autorestart: true,
+      watch: false,
+      error_file: path.join(LOGS_DIR, 'tunnel-watchdog-error.log'),
+      out_file: path.join(LOGS_DIR, 'tunnel-watchdog-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+
+    // ─── Cloudflare Tunnels ────────────────────────────────────
     {
       name: 'tunnel',
-      script: '/tmp/cloudflared',
+      script: '/home/adhamhashish03/.local/bin/cloudflared',
       args: 'tunnel --url http://localhost:3333',
       interpreter: 'none',
       restart_delay: 5000,
@@ -195,6 +268,20 @@ module.exports = {
       watch: false,
       error_file: path.join(LOGS_DIR, 'tunnel-error.log'),
       out_file: path.join(LOGS_DIR, 'tunnel-out.log'),
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    },
+    {
+      name: 'mcp-tunnel',
+      script: '/home/adhamhashish03/.local/bin/cloudflared',
+      args: 'tunnel --url http://localhost:3001',
+      interpreter: 'none',
+      restart_delay: 5000,
+      max_restarts: 100,
+      autorestart: true,
+      watch: false,
+      error_file: path.join(LOGS_DIR, 'mcp-tunnel-error.log'),
+      out_file: path.join(LOGS_DIR, 'mcp-tunnel-out.log'),
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },

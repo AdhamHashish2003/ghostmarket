@@ -13,8 +13,6 @@ const ROG_WORKER_URL = process.env.ROG_WORKER_URL || '';
 const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://orchestrator:4000';
 const MAX_TELEGRAM_PER_DAY = 10;
 
-let telegramSentToday = 0;
-
 if (!BOT_TOKEN) {
   console.error('[Telegram] TELEGRAM_BOT_TOKEN not set');
   process.exit(1);
@@ -29,6 +27,58 @@ bot.on('polling_error', (err) => {
 });
 
 console.log('[Telegram] Bot starting...');
+
+// ============================================================
+// Persistent Telegram state (survives restarts)
+// ============================================================
+
+function initTelegramState(): void {
+  const db = getDb();
+  withRetry(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS telegram_state (key TEXT PRIMARY KEY, value TEXT);
+      CREATE TABLE IF NOT EXISTS telegram_sent_products (product_id TEXT PRIMARY KEY, sent_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')));
+    `);
+  });
+}
+
+function getTelegramSentToday(): number {
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const dateRow = db.prepare("SELECT value FROM telegram_state WHERE key = 'cards_date'").get() as { value: string } | undefined;
+  if (!dateRow || dateRow.value !== today) {
+    // New day — reset counter
+    withRetry(() => {
+      db.prepare("INSERT OR REPLACE INTO telegram_state (key, value) VALUES ('cards_date', ?)").run(today);
+      db.prepare("INSERT OR REPLACE INTO telegram_state (key, value) VALUES ('cards_sent_today', '0')").run();
+    });
+    return 0;
+  }
+  const countRow = db.prepare("SELECT value FROM telegram_state WHERE key = 'cards_sent_today'").get() as { value: string } | undefined;
+  return parseInt(countRow?.value || '0', 10);
+}
+
+function incrementTelegramSent(): void {
+  const db = getDb();
+  const current = getTelegramSentToday();
+  withRetry(() => {
+    db.prepare("INSERT OR REPLACE INTO telegram_state (key, value) VALUES ('cards_sent_today', ?)").run(String(current + 1));
+  });
+}
+
+function isProductAlreadySent(productId: string): boolean {
+  const db = getDb();
+  return !!db.prepare("SELECT 1 FROM telegram_sent_products WHERE product_id = ?").get(productId);
+}
+
+function markProductSent(productId: string): void {
+  const db = getDb();
+  withRetry(() => {
+    db.prepare("INSERT OR IGNORE INTO telegram_sent_products (product_id) VALUES (?)").run(productId);
+  });
+}
+
+initTelegramState();
 
 // ============================================================
 // Product Card Formatting
@@ -79,15 +129,12 @@ Method: ${product.fulfillment_method || 'TBD'}
 // ============================================================
 
 async function sendProductCard(productId: string): Promise<void> {
-  if (telegramSentToday >= MAX_TELEGRAM_PER_DAY) {
-    // Log overflow
-    const db = getDb();
-    withRetry(() => {
-      db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message, metadata) VALUES (?, 'telegram', 'rate_limit', 'info', ?, ?)`)
-        .run(uuid(), 'Daily Telegram limit reached, product surfaced but not sent', JSON.stringify({ product_id: productId }));
-    });
-    return;
-  }
+  // Skip if already sent (persisted across restarts)
+  if (isProductAlreadySent(productId)) return;
+
+  // Check daily limit from DB (persisted across restarts)
+  const sentToday = getTelegramSentToday();
+  if (sentToday >= MAX_TELEGRAM_PER_DAY) return;
 
   const db = getDb();
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId) as Product | undefined;
@@ -122,7 +169,8 @@ async function sendProductCard(productId: string): Promise<void> {
       reply_markup: keyboard,
       parse_mode: undefined, // Plain text for reliable formatting
     });
-    telegramSentToday++;
+    incrementTelegramSent();
+    markProductSent(productId);
   } catch (err) {
     console.error('[Telegram] Failed to send card:', err);
   }
@@ -231,84 +279,75 @@ bot.on('callback_query', async (query) => {
 
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
+
   await bot.sendMessage(chatId, `👻 GhostMarket War Room — Online
 ━━━━━━━━━━━━━━━━━━━━━━
 Initiating full pipeline scan...
-Phase 1: Scout (trend discovery)
-Phase 2: Scorer (neural scoring)
-Phase 3: Surface top products
 ━━━━━━━━━━━━━━━━━━━━━━`);
 
-  // Phase 1: Trigger Scout
+  // Phase 1: Trigger Scout (non-blocking — orchestrator responds immediately)
+  let scoutTriggered = false;
   try {
-    await bot.sendMessage(chatId, '🔍 Phase 1: Running Scout agent...');
-    const scoutResp = await fetch(`${ORCHESTRATOR_URL}/trigger/scout`, { method: 'POST' });
-    const scoutData = await scoutResp.json() as { signals?: number; error?: string; skipped?: string };
+    await bot.sendMessage(chatId, '🔍 Phase 1: Triggering Scout agent...');
+    const scoutResp = await fetch(`${ORCHESTRATOR_URL}/trigger/scout`, { method: 'POST', signal: AbortSignal.timeout(10000) });
+    const scoutData = await scoutResp.json() as { skipped?: string; status?: string; signals_before?: number };
     if (scoutData.skipped) {
       await bot.sendMessage(chatId, '⏸️ Pipeline is paused. Resume with /resume first.');
       return;
     }
-    if (scoutData.error) {
-      await bot.sendMessage(chatId, `⚠️ Scout warning: ${scoutData.error}\nContinuing with existing signals...`);
-    } else {
-      await bot.sendMessage(chatId, `✅ Scout complete — ${scoutData.signals || 0} total signals in database`);
-    }
+    scoutTriggered = true;
+    await bot.sendMessage(chatId, `✅ Scout running in background (${scoutData.signals_before || 0} signals in DB)`);
   } catch (e) {
-    await bot.sendMessage(chatId, `⚠️ Scout unavailable: ${e instanceof Error ? e.message : e}\nContinuing with existing data...`);
+    await bot.sendMessage(chatId, `⚠️ Scout unavailable — continuing with existing data`);
   }
 
-  // Phase 2: Trigger Scorer
+  // Phase 2: Trigger Scorer (non-blocking)
   try {
-    await bot.sendMessage(chatId, '🧠 Phase 2: Running Scorer agent...');
-    const scorerResp = await fetch(`${ORCHESTRATOR_URL}/trigger/scorer`, { method: 'POST' });
-    const scorerData = await scorerResp.json() as { scored?: number; error?: string; skipped?: string };
-    if (scorerData.error) {
-      await bot.sendMessage(chatId, `⚠️ Scorer warning: ${scorerData.error}\nUsing existing scores...`);
-    } else {
-      await bot.sendMessage(chatId, `✅ Scorer complete — ${scorerData.scored || 0} products scored`);
+    await bot.sendMessage(chatId, '🧠 Phase 2: Triggering Scorer agent...');
+    const scorerResp = await fetch(`${ORCHESTRATOR_URL}/trigger/scorer`, { method: 'POST', signal: AbortSignal.timeout(10000) });
+    const scorerData = await scorerResp.json() as { skipped?: string; status?: string; scored_before?: number };
+    if (!scorerData.skipped) {
+      await bot.sendMessage(chatId, `✅ Scorer running in background (${scorerData.scored_before || 0} products scored so far)`);
     }
   } catch (e) {
-    await bot.sendMessage(chatId, `⚠️ Scorer unavailable: ${e instanceof Error ? e.message : e}\nUsing existing scores...`);
+    await bot.sendMessage(chatId, `⚠️ Scorer unavailable — using existing scores`);
   }
 
-  // Phase 3: Surface top products
+  // Wait briefly for agents to process (they run async in background)
+  await bot.sendMessage(chatId, '⏳ Agents running in background...');
+  await new Promise(r => setTimeout(r, 5000));
+
+  // Phase 3: Surface top products from DB (always works, no blocking)
   try {
     const db = getDb();
     const topProducts = db.prepare(`
       SELECT p.id, p.keyword, p.score, p.stage, p.category
       FROM products p
-      WHERE p.score >= 65 AND p.stage IN ('scored', 'discovered')
+      WHERE p.score >= 55 AND p.stage IN ('scored', 'discovered')
       ORDER BY p.score DESC
       LIMIT 5
     `).all() as Array<{ id: string; keyword: string; score: number; stage: string; category: string | null }>;
 
     if (topProducts.length === 0) {
-      await bot.sendMessage(chatId, '📭 No products with score >= 65 found. Run more scout cycles or lower threshold.');
+      const anyProducts = db.prepare(`
+        SELECT COUNT(*) as c FROM products WHERE score IS NOT NULL
+      `).get() as { c: number };
+      await bot.sendMessage(chatId, `📭 No products with score >= 55 found (${anyProducts.c} products scored total).\nRun more scout cycles.`);
       return;
     }
 
     await bot.sendMessage(chatId, `🎯 Phase 3: Top ${topProducts.length} products (score >= 65)\n━━━━━━━━━━━━━━━━━━━━━━`);
 
     for (const product of topProducts) {
-      const text = `📦 ${product.keyword}
-Score: ${product.score}/100 | Stage: ${product.stage}
-Category: ${product.category || 'Uncategorized'}
-ID: ${product.id.slice(0, 8)}...`;
-
-      const keyboard = {
-        inline_keyboard: [
-          [
-            { text: '✅ Approve', callback_data: `approve:${product.id}` },
-            { text: '⏭️ Skip', callback_data: `skip:${product.id}` },
-          ],
-        ],
-      };
-
-      await bot.sendMessage(chatId, text, { reply_markup: keyboard });
+      await sendProductCard(product.id);
     }
 
-    await bot.sendMessage(chatId, `━━━━━━━━━━━━━━━━━━━━━━
-Pipeline complete. Use /status for overview.`);
+    const pendingActions = db.prepare("SELECT COUNT(*) as c FROM human_actions WHERE status = 'pending'").get() as { c: number };
+    let footer = `━━━━━━━━━━━━━━━━━━━━━━\n✅ Pipeline complete. Use /status for overview.`;
+    if (pendingActions.c > 0) {
+      footer += `\n⚠️ ${pendingActions.c} pending action(s) — use /actions`;
+    }
+    await bot.sendMessage(chatId, footer);
   } catch (e) {
     await bot.sendMessage(chatId, `❌ Failed to fetch products: ${e instanceof Error ? e.message : e}`);
   }
@@ -322,7 +361,7 @@ bot.onText(/\/status/, async (msg) => {
   for (const s of stages) {
     text += `${s.stage}: ${s.count}\n`;
   }
-  text += `\n📬 Telegram cards today: ${telegramSentToday}/${MAX_TELEGRAM_PER_DAY}`;
+  text += `\n📬 Telegram cards today: ${getTelegramSentToday()}/${MAX_TELEGRAM_PER_DAY}`;
   await bot.sendMessage(msg.chat.id, text);
 });
 
@@ -547,6 +586,104 @@ bot.onText(/\/budget (\d+\.?\d*)/, async (msg, match) => {
   }
 });
 
+// ============================================================
+// Human Action handlers: DONE / SKIP / /actions
+// ============================================================
+
+import {
+  HUMAN_ACTIONS,
+  getLatestPendingAction,
+  getPendingActions,
+  completeHumanAction,
+  skipHumanAction,
+} from '../shared/human-actions.js';
+
+bot.onText(/^DONE\b/i, async (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text || '';
+  const pending = getLatestPendingAction();
+
+  if (!pending) {
+    await bot.sendMessage(chatId, '✅ No pending actions to complete.');
+    return;
+  }
+
+  const userData = text.substring(4).trim();
+  const action = completeHumanAction(pending.id, userData || undefined);
+  if (!action) {
+    await bot.sendMessage(chatId, '❌ Could not find the pending action.');
+    return;
+  }
+
+  const def = HUMAN_ACTIONS[action.action_type];
+  let response = `✅ Action completed: ${def?.emoji || '✓'} ${def?.title || action.action_type}`;
+  if (userData) response += `\nData: ${userData}`;
+  response += '\n\n▶️ Pipeline RESUMED.';
+
+  await bot.sendMessage(chatId, response);
+
+  // Re-trigger the builder for this product
+  if (action.product_id) {
+    try {
+      await fetch(`${ORCHESTRATOR_URL}/trigger/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: action.product_id }),
+      });
+    } catch { /* orchestrator might not be running */ }
+  }
+});
+
+bot.onText(/^SKIP$/i, async (msg) => {
+  const chatId = msg.chat.id;
+  const pending = getLatestPendingAction();
+
+  if (!pending) {
+    await bot.sendMessage(chatId, '⏭️ No pending actions to skip.');
+    return;
+  }
+
+  const action = skipHumanAction(pending.id);
+  if (!action) {
+    await bot.sendMessage(chatId, '❌ Could not find the pending action.');
+    return;
+  }
+
+  const def = HUMAN_ACTIONS[action.action_type];
+  await bot.sendMessage(chatId, `⏭️ Action skipped: ${def?.emoji || '?'} ${def?.title || action.action_type}\n\n▶️ Pipeline RESUMED (action skipped).`);
+
+  // Re-trigger the builder
+  if (action.product_id) {
+    try {
+      await fetch(`${ORCHESTRATOR_URL}/trigger/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: action.product_id }),
+      });
+    } catch { /* orchestrator might not be running */ }
+  }
+});
+
+bot.onText(/\/actions/, async (msg) => {
+  const chatId = msg.chat.id;
+  const pending = getPendingActions();
+
+  if (pending.length === 0) {
+    await bot.sendMessage(chatId, '✅ No pending actions. Pipeline is flowing freely.');
+    return;
+  }
+
+  let text = `⏸️ PENDING ACTIONS (${pending.length})\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+  for (const a of pending) {
+    const def = HUMAN_ACTIONS[a.action_type];
+    const age = Math.round((Date.now() - new Date(a.created_at).getTime()) / 60000);
+    const ageStr = age < 60 ? `${age}m ago` : `${Math.round(age / 60)}h ago`;
+    text += `\n${def?.emoji || '❓'} ${def?.title || a.action_type}\n   ${a.action_description}\n   ${ageStr} | ID: ${a.id.substring(0, 8)}\n`;
+  }
+  text += '\n━━━━━━━━━━━━━━━━━━━━━━\nReply DONE or SKIP to handle the latest action.';
+  await bot.sendMessage(chatId, text);
+});
+
 bot.onText(/\/kill (\S+)/, async (msg, match) => {
   if (!match) return;
   const productId = match[1];
@@ -626,38 +763,25 @@ RULES:
 // ============================================================
 
 async function checkForNewCards(): Promise<void> {
+  // Skip entirely if daily limit already reached
+  if (getTelegramSentToday() >= MAX_TELEGRAM_PER_DAY) return;
+
   const db = getDb();
   const products = db.prepare(`
     SELECT id FROM products
     WHERE stage = 'scored'
       AND decision = 'recommend'
       AND score >= 65
+      AND id NOT IN (SELECT product_id FROM telegram_sent_products)
     ORDER BY score DESC
     LIMIT 5
   `).all() as Array<{ id: string }>;
 
   for (const p of products) {
     await sendProductCard(p.id);
-    // Mark as sent (keep in scored stage until operator acts)
-    withRetry(() => {
-      db.prepare(`INSERT OR IGNORE INTO system_events (id, agent, event_type, severity, message, metadata) VALUES (?, 'telegram', 'health_check', 'info', ?, ?)`)
-        .run(uuid(), `Product card sent to Telegram`, JSON.stringify({ product_id: p.id }));
-    });
   }
 }
 
-// Reset daily counter at midnight
-function scheduleDailyReset(): void {
-  const now = new Date();
-  const midnight = new Date(now);
-  midnight.setHours(24, 0, 0, 0);
-  const msUntilMidnight = midnight.getTime() - now.getTime();
-
-  setTimeout(() => {
-    telegramSentToday = 0;
-    scheduleDailyReset();
-  }, msUntilMidnight);
-}
 
 // ============================================================
 // Start
@@ -670,8 +794,6 @@ withRetry(() => {
   db.prepare(`INSERT INTO system_events (id, agent, event_type, severity, message) VALUES (?, 'telegram', 'startup', 'info', 'Telegram bot started')`)
     .run(uuid());
 });
-
-scheduleDailyReset();
 
 // Poll for new cards every 2 minutes
 setInterval(() => {
