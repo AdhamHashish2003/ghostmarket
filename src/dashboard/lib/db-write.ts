@@ -28,11 +28,26 @@ export function getWriteDb(): Database.Database {
       product_id TEXT NOT NULL,
       variant TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      email TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      UNIQUE(email, product_id)
+    );
     CREATE INDEX IF NOT EXISTS idx_ab_impressions_product ON ab_impressions(product_id);
     CREATE INDEX IF NOT EXISTS idx_ab_impressions_variant ON ab_impressions(product_id, variant);
     CREATE INDEX IF NOT EXISTS idx_ab_clicks_impression ON ab_clicks(impression_id);
     CREATE INDEX IF NOT EXISTS idx_ab_clicks_product ON ab_clicks(product_id);
+    CREATE INDEX IF NOT EXISTS idx_waitlist_product ON waitlist(product_id);
+    CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(email);
   `);
+
+  // Migrate: add checkout_url to products if missing
+  const cols = _db.prepare("PRAGMA table_info(products)").all() as { name: string }[];
+  if (!cols.some(c => c.name === 'checkout_url')) {
+    _db.exec("ALTER TABLE products ADD COLUMN checkout_url TEXT");
+  }
 
   return _db;
 }

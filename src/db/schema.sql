@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS products (
     total_ad_spend REAL DEFAULT 0,
     total_orders INTEGER DEFAULT 0,
     roas REAL,
-    notes TEXT
+    notes TEXT,
+    checkout_url TEXT  -- Stripe Payment Link or Gumroad URL; NULL = show waitlist
 );
 
 CREATE INDEX IF NOT EXISTS idx_products_stage ON products(stage);
@@ -351,6 +352,21 @@ CREATE TABLE IF NOT EXISTS ab_clicks (
 CREATE INDEX IF NOT EXISTS idx_ab_clicks_impression ON ab_clicks(impression_id);
 CREATE INDEX IF NOT EXISTS idx_ab_clicks_product ON ab_clicks(product_id);
 CREATE INDEX IF NOT EXISTS idx_ab_clicks_variant ON ab_clicks(product_id, variant);
+
+-- ============================================================
+-- WAITLIST (email capture for products without checkout_url)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS waitlist (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    email TEXT NOT NULL,
+    product_id TEXT NOT NULL REFERENCES products(id),
+    UNIQUE(email, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_product ON waitlist(product_id);
+CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(email);
 
 -- ============================================================
 -- TRAINING EXPORT VIEW (denormalized for ML)

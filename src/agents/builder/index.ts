@@ -135,7 +135,7 @@ Output JSON:
   const primaryColor = colors[0] || '#1a1a2e';
   const accentColor = colors[1] || '#e94560';
 
-  const html = generateHTML(parsed, brand.brand_name, price, primaryColor, accentColor, product.keyword, heroImageB64);
+  const html = generateHTML(parsed, brand.brand_name, price, primaryColor, accentColor, product.keyword, product.id, heroImageB64);
   const wordCount = html.split(/\s+/).length;
 
   // Save HTML file
@@ -179,6 +179,7 @@ function generateHTML(
   primaryColor: string,
   accentColor: string,
   _productKeyword: string,
+  productId: string,
   heroImageB64?: string,
 ): string {
   // Guarantee visible colors — never white-on-white
@@ -216,8 +217,26 @@ function generateHTML(
     .social-proof { background: #f8f9fa; padding: 40px 20px; text-align: center; }
     .social-proof p { font-size: 1.1rem; color: #555; max-width: 500px; margin: 0 auto; }
     .urgency { background: ${urgencyBg}; color: white; padding: 20px; text-align: center; font-weight: bold; }
-    .final-cta { padding: 60px 20px; text-align: center; }
-    .final-cta .cta { background: ${heroBg}; }
+    .gm-checkout { padding: 48px 20px; text-align: center; background: #111; }
+    .gm-checkout h2 { color: #fff; font-size: 1.6rem; margin-bottom: 20px; }
+    .gm-buy-btn { display: inline-block; background: #FF6B00; color: #fff; padding: 18px 56px;
+      border-radius: 8px; font-size: 1.3rem; font-weight: 800; text-decoration: none;
+      text-transform: uppercase; letter-spacing: 1px; transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(255,107,0,0.4); }
+    .gm-buy-btn:hover { transform: scale(1.05); box-shadow: 0 6px 28px rgba(255,107,0,0.6); }
+    .gm-waitlist { max-width: 420px; margin: 0 auto; }
+    .gm-waitlist p { color: #aaa; margin-bottom: 16px; font-size: 1rem; }
+    .gm-waitlist-form { display: flex; gap: 8px; }
+    .gm-waitlist-form input[type="email"] { flex: 1; padding: 14px 16px; border: 2px solid #333;
+      border-radius: 8px; background: #1a1a1a; color: #fff; font-size: 1rem; outline: none; }
+    .gm-waitlist-form input[type="email"]:focus { border-color: #FF6B00; }
+    .gm-waitlist-form button { background: #FF6B00; color: #fff; border: none; padding: 14px 24px;
+      border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+      transition: transform 0.2s; }
+    .gm-waitlist-form button:hover { transform: scale(1.05); }
+    .gm-waitlist-msg { margin-top: 12px; font-size: 0.95rem; }
+    .gm-waitlist-msg.ok { color: #22C55E; }
+    .gm-waitlist-msg.err { color: #DC2626; }
     .brand { padding: 20px; text-align: center; font-size: 0.9rem; color: #999; }
 
     /* Mobile responsive */
@@ -240,6 +259,8 @@ function generateHTML(
       .hero h1 { font-size: 1.5rem; }
       .hero .price { font-size: 1.4rem; }
       .cta { font-size: 1rem; padding: 14px 16px; }
+      .gm-waitlist-form { flex-direction: column; }
+      .gm-buy-btn { display: block; width: 100%; max-width: 320px; margin: 0 auto; padding: 16px 20px; font-size: 1.1rem; }
     }
   </style>
 </head>
@@ -252,7 +273,7 @@ function generateHTML(
       <span class="original">$${(price * 1.5).toFixed(2)}</span>
       $${price.toFixed(2)}
     </div>
-    <a href="#order" class="cta">${copy.cta_text}</a>
+    <a href="#gm-checkout" class="cta">${copy.cta_text}</a>
   </section>
   <section class="benefits">
     <h2>Why ${brandName}?</h2>
@@ -266,11 +287,36 @@ function generateHTML(
   <section class="urgency">
     ${copy.urgency_text}
   </section>
-  <section class="final-cta" id="order">
-    <h2>Get Yours Now</h2>
-    <br>
-    <a href="#" class="cta">${copy.cta_text}</a>
+  <section class="gm-checkout" id="gm-checkout">
+    <h2>Coming Soon &mdash; Join the Waitlist</h2>
+    <div class="gm-waitlist">
+      <p>Be the first to know when this drops. No spam, just one email.</p>
+      <form class="gm-waitlist-form" id="gm-waitlist-form">
+        <input type="email" name="email" placeholder="you@example.com" required />
+        <button type="submit">Notify Me</button>
+      </form>
+      <div class="gm-waitlist-msg" id="gm-waitlist-msg"></div>
+    </div>
   </section>
+  <script>
+  (function(){
+    var form=document.getElementById('gm-waitlist-form');
+    var msg=document.getElementById('gm-waitlist-msg');
+    if(!form)return;
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      var email=form.querySelector('input[name="email"]').value;
+      msg.textContent='Signing up...';msg.className='gm-waitlist-msg';
+      fetch('/api/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email:email,product_id:"${productId}"})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.ok){msg.textContent="You're on the list!";msg.className='gm-waitlist-msg ok';form.reset();}
+        else{msg.textContent=d.error||'Something went wrong';msg.className='gm-waitlist-msg err';}
+      }).catch(function(){msg.textContent='Network error — try again';msg.className='gm-waitlist-msg err';});
+    });
+  })();
+  </script>
   <footer class="brand">© ${new Date().getFullYear()} ${brandName}. All rights reserved.</footer>
 </body>
 </html>`;
