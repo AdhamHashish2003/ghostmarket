@@ -92,34 +92,52 @@ async function getDataLocal(): Promise<DashboardData> {
 }
 
 async function getDataRemote(): Promise<DashboardData> {
-  const [pipeline, metrics] = await Promise.all([
-    fetchOrchestrator<{
-      stages: Array<{ stage: string; count: number }>;
-      recentEvents: DashboardData['initialEvents'];
-    }>('/api/pipeline'),
-    fetchOrchestrator<{
-      totalProducts: number; scoredToday: number; approved: number; live: number;
-      totalRevenue: number; modelVersion: string; recentProducts: DashboardData['recentProducts'];
-    }>('/api/metrics'),
-  ]);
+  // On Vercel: fetch data from orchestrator via tunnel.
+  // Read ORCHESTRATOR_URL at call time (not module-load time) to ensure fresh env.
+  const orchUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:4000';
+  let pipeline: Record<string, unknown> = {};
+  let m: Record<string, unknown> = {};
 
+  async function orchFetch(apiPath: string): Promise<Record<string, unknown>> {
+    const resp = await fetch(`${orchUrl}${apiPath}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    return resp.json();
+  }
+
+  // Pipeline fetch
+  try { pipeline = await orchFetch('/api/pipeline'); } catch { /* empty */ }
+
+  // Metrics fetch
+  try { m = await orchFetch('/api/metrics'); } catch { /* empty */ }
+
+  // Pipeline response: handle both field names (stages vs stageCounts)
   const stageCountMap: Record<string, number> = {};
-  for (const s of pipeline.stages || []) stageCountMap[s.stage] = s.count;
+  const stages = (pipeline.stages || pipeline.stageCounts || []) as Array<{ stage: string; count: number }>;
+  for (const s of stages) stageCountMap[s.stage] = s.count;
+
+  // Derive metrics from stage counts as fallback
+  const stageTotal = Object.values(stageCountMap).reduce((a, b) => a + b, 0);
+  const liveCount = (stageCountMap['live'] || 0) + (stageCountMap['tracking'] || 0);
+  const approvedCount = stageCountMap['approved'] || 0;
+  const scoredCount = stageCountMap['scored'] || 0;
 
   return {
-    totalProducts: metrics.totalProducts || 0,
-    scoredToday: metrics.scoredToday || 0,
-    approved: metrics.approved || 0,
-    live: metrics.live || 0,
-    totalRevenue: metrics.totalRevenue || 0,
-    modelVersion: metrics.modelVersion || 'v1.0',
+    totalProducts: (m.totalProducts as number) || stageTotal,
+    scoredToday: (m.scoredToday as number) || (m.throughput as number) || scoredCount,
+    approved: (m.approved as number) || (m.productsApproved as number) || approvedCount,
+    live: (m.live as number) || (m.productsLive as number) || liveCount,
+    totalRevenue: (m.totalRevenue as number) || 0,
+    modelVersion: (m.modelVersion as string) || 'v1.0',
     stageCountMap,
     agentLastMap: {},
-    initialEvents: pipeline.recentEvents || [],
-    recentProducts: metrics.recentProducts || [],
-    avgScore: 0,
-    approvedToday: 0,
-    throughput: 0,
+    initialEvents: (pipeline.recentEvents as DashboardData['initialEvents']) || [],
+    recentProducts: (m.recentProducts as DashboardData['recentProducts']) || [],
+    avgScore: (m.avgScore as number) || 0,
+    approvedToday: (m.approvedToday as number) || 0,
+    throughput: (m.throughput as number) || stageTotal,
   };
 }
 

@@ -1,9 +1,9 @@
-import { getDb } from '@/lib/db';
+import { canUseLocalDb, fetchOrchestrator } from '@/lib/data';
 import Link from 'next/link';
 import fs from 'fs';
 import path from 'path';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 interface StoreProduct {
   id: string;
@@ -19,8 +19,16 @@ interface StoreProduct {
   image_b64: string | null;
 }
 
-async function getStoreProducts(category?: string, sort?: string): Promise<StoreProduct[]> {
+interface StoreCategory {
+  value: string;
+  label: string;
+  count: number;
+}
+
+async function getStoreDataLocal(): Promise<{ products: StoreProduct[]; categories: StoreCategory[] }> {
+  const { getDb } = await import('@/lib/db');
   const db = getDb();
+
   const rows = db.prepare(`
     SELECT p.id, p.keyword, p.category, p.fulfillment_method, p.stage, p.score,
            bk.brand_name,
@@ -37,19 +45,61 @@ async function getStoreProducts(category?: string, sort?: string): Promise<Store
   }>;
 
   const imagesDir = path.resolve(process.cwd(), '..', '..', 'data', 'images');
-  let products: StoreProduct[] = rows.map(r => {
+  const products: StoreProduct[] = rows.map(r => {
     const imgPath = path.join(imagesDir, `${r.id}_hero.png`);
     const hasImage = fs.existsSync(imgPath);
     let imageB64: string | null = null;
     if (hasImage) {
-      try {
-        const buf = fs.readFileSync(imgPath);
-        imageB64 = buf.toString('base64');
-      } catch { /* ignore */ }
+      try { imageB64 = fs.readFileSync(imgPath).toString('base64'); } catch { /* ignore */ }
     }
     return { ...r, has_image: hasImage, image_b64: imageB64 };
   });
 
+  const fm = db.prepare(`
+    SELECT fulfillment_method, COUNT(*) as c FROM products
+    WHERE stage IN ('approved','live','tracking','building')
+    GROUP BY fulfillment_method ORDER BY c DESC
+  `).all() as Array<{ fulfillment_method: string; c: number }>;
+
+  const categories: StoreCategory[] = [
+    { value: 'all', label: 'All Products', count: fm.reduce((s, r) => s + r.c, 0) },
+    ...fm.map(r => ({
+      value: r.fulfillment_method || 'other',
+      label: r.fulfillment_method === 'pod' ? 'Print on Demand' : r.fulfillment_method === 'dropship' ? 'Dropship' : r.fulfillment_method === 'digital' ? 'Digital' : 'Other',
+      count: r.c,
+    })),
+  ];
+
+  return { products, categories };
+}
+
+async function getStoreDataRemote(): Promise<{ products: StoreProduct[]; categories: StoreCategory[] }> {
+  const data = await fetchOrchestrator<{
+    products: Array<{
+      id: string; keyword: string; category: string; fulfillment_method: string;
+      stage: string; score: number; brand_name: string | null; retail_price: number | null; has_landing: number;
+    }>;
+    categories: Array<{ fulfillment_method: string; c: number }>;
+  }>('/api/store');
+
+  const products: StoreProduct[] = (data.products || []).map(r => ({
+    ...r, has_image: false, image_b64: null,
+  }));
+
+  const fm = data.categories || [];
+  const categories: StoreCategory[] = [
+    { value: 'all', label: 'All Products', count: fm.reduce((s, r) => s + r.c, 0) },
+    ...fm.map(r => ({
+      value: r.fulfillment_method || 'other',
+      label: r.fulfillment_method === 'pod' ? 'Print on Demand' : r.fulfillment_method === 'dropship' ? 'Dropship' : r.fulfillment_method === 'digital' ? 'Digital' : 'Other',
+      count: r.c,
+    })),
+  ];
+
+  return { products, categories };
+}
+
+function applyFilters(products: StoreProduct[], category?: string, sort?: string): StoreProduct[] {
   // Deduplicate by keyword (keep highest score)
   const seen = new Map<string, StoreProduct>();
   for (const p of products) {
@@ -58,41 +108,23 @@ async function getStoreProducts(category?: string, sort?: string): Promise<Store
       seen.set(key, p);
     }
   }
-  products = Array.from(seen.values());
+  let filtered = Array.from(seen.values());
 
   // Filter
   if (category && category !== 'all') {
     if (category === 'dropship' || category === 'pod' || category === 'digital') {
-      products = products.filter(p => p.fulfillment_method === category);
+      filtered = filtered.filter(p => p.fulfillment_method === category);
     } else {
-      products = products.filter(p => p.category === category);
+      filtered = filtered.filter(p => p.category === category);
     }
   }
 
   // Sort
-  if (sort === 'price_low') products.sort((a, b) => (a.retail_price || 0) - (b.retail_price || 0));
-  else if (sort === 'price_high') products.sort((a, b) => (b.retail_price || 0) - (a.retail_price || 0));
-  else if (sort === 'newest') products.sort((a, b) => 0); // already ordered
-  else products.sort((a, b) => (b.score || 0) - (a.score || 0));
+  if (sort === 'price_low') filtered.sort((a, b) => (a.retail_price || 0) - (b.retail_price || 0));
+  else if (sort === 'price_high') filtered.sort((a, b) => (b.retail_price || 0) - (a.retail_price || 0));
+  else filtered.sort((a, b) => (b.score || 0) - (a.score || 0));
 
-  return products;
-}
-
-function getCategories(): Array<{ value: string; label: string; count: number }> {
-  const db = getDb();
-  const fm = db.prepare(`
-    SELECT fulfillment_method, COUNT(*) as c FROM products
-    WHERE stage IN ('approved','live','tracking','building')
-    GROUP BY fulfillment_method ORDER BY c DESC
-  `).all() as Array<{ fulfillment_method: string; c: number }>;
-  return [
-    { value: 'all', label: 'All Products', count: fm.reduce((s, r) => s + r.c, 0) },
-    ...fm.map(r => ({
-      value: r.fulfillment_method || 'other',
-      label: r.fulfillment_method === 'pod' ? 'Print on Demand' : r.fulfillment_method === 'dropship' ? 'Dropship' : r.fulfillment_method === 'digital' ? 'Digital' : 'Other',
-      count: r.c,
-    })),
-  ];
+  return filtered;
 }
 
 const GRADIENT_COLORS: Record<string, [string, string]> = {
@@ -115,8 +147,23 @@ export default async function StorePage({
   searchParams: Promise<{ category?: string; sort?: string }>;
 }) {
   const params = await searchParams;
-  const products = await getStoreProducts(params.category, params.sort);
-  const categories = getCategories();
+
+  let allProducts: StoreProduct[] = [];
+  let categories: StoreCategory[] = [{ value: 'all', label: 'All Products', count: 0 }];
+
+  try {
+    const data = canUseLocalDb() ? await getStoreDataLocal() : await getStoreDataRemote();
+    allProducts = data.products;
+    categories = data.categories;
+  } catch {
+    try {
+      const data = await getStoreDataRemote();
+      allProducts = data.products;
+      categories = data.categories;
+    } catch { /* render empty */ }
+  }
+
+  const products = applyFilters(allProducts, params.category, params.sort);
   const activeCategory = params.category || 'all';
   const activeSort = params.sort || 'score';
 

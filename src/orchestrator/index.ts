@@ -358,6 +358,18 @@ app.get('/api/metrics', (_req, res) => {
       sourceHitRates[row.source] = Math.round(row.hit_rate * 1000) / 1000;
     }
 
+    const avgScoreRow = db.prepare(`
+      SELECT ROUND(AVG(score), 1) as avg FROM products WHERE score IS NOT NULL
+    `).get() as { avg: number | null };
+
+    const approvedToday = (db.prepare(`
+      SELECT COUNT(*) as c FROM operator_decisions WHERE decision = 'approve' AND date(created_at) = date('now')
+    `).get() as { c: number }).c;
+
+    const throughput = (db.prepare(`
+      SELECT COUNT(*) as c FROM products WHERE stage NOT IN ('discovered') AND date(updated_at) = date('now')
+    `).get() as { c: number }).c;
+
     const recentProducts = db.prepare(`
       SELECT id, keyword, category, stage, score, decision, outcome_label, created_at, updated_at
       FROM products ORDER BY created_at DESC LIMIT 5
@@ -383,7 +395,38 @@ app.get('/api/metrics', (_req, res) => {
       sourceHitRates,
       recentProducts,
       outcomeDistribution,
+      avgScore: avgScoreRow?.avg ?? 0,
+      approvedToday,
+      throughput,
     });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// 2b. GET /api/store — products for the public store page
+app.get('/api/store', (_req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT p.id, p.keyword, p.category, p.fulfillment_method, p.stage, p.score,
+             bk.brand_name,
+             s.estimated_retail as retail_price,
+             (SELECT COUNT(*) FROM landing_pages lp WHERE lp.product_id = p.id AND lp.html_content IS NOT NULL) as has_landing
+      FROM products p
+      LEFT JOIN brand_kits bk ON bk.product_id = p.id
+      LEFT JOIN suppliers s ON s.product_id = p.id AND s.is_best = 1
+      WHERE p.stage IN ('approved', 'live', 'tracking', 'building')
+      ORDER BY p.score DESC
+    `).all();
+
+    const categories = db.prepare(`
+      SELECT fulfillment_method, COUNT(*) as c FROM products
+      WHERE stage IN ('approved','live','tracking','building')
+      GROUP BY fulfillment_method ORDER BY c DESC
+    `).all();
+
+    res.json({ products: rows, categories });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

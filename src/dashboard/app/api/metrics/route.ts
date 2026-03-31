@@ -79,6 +79,21 @@ export async function GET() {
       }
     }
 
+    // Avg score across all scored products
+    const avgScoreRow = db.prepare(`
+      SELECT ROUND(AVG(score), 1) as avg FROM products WHERE score IS NOT NULL
+    `).get() as { avg: number | null };
+
+    // Approved today (operator decisions)
+    const approvedTodayRow = db.prepare(`
+      SELECT COUNT(*) as count FROM operator_decisions WHERE decision = 'approve' AND date(created_at) = date('now')
+    `).get() as { count: number };
+
+    // Throughput: products that moved past discovered today
+    const throughputRow = db.prepare(`
+      SELECT COUNT(*) as count FROM products WHERE stage NOT IN ('discovered') AND date(updated_at) = date('now')
+    `).get() as { count: number };
+
     // Recent products (last 5)
     const recentProducts = db.prepare(`
       SELECT id, keyword, category, stage, score, decision,
@@ -109,6 +124,9 @@ export async function GET() {
       sourceHitRates,
       recentProducts,
       outcomeDistribution,
+      avgScore: avgScoreRow?.avg ?? 0,
+      approvedToday: approvedTodayRow.count,
+      throughput: throughputRow.count,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
