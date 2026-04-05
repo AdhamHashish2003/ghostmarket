@@ -1,85 +1,31 @@
-version: "3.8"
-
-# GhostMarket — PC (Orchestrator) Services
-# Runs on the primary PC — always on
+version: '3.8'
 
 services:
-  orchestrator:
-    build:
-      context: .
-      dockerfile: src/orchestrator/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
-      - ./models:/models
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ghostmarket
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ghostmarket_dev
     ports:
-      - "4000:4000"
-    depends_on:
-      - dashboard
-
-  dashboard:
-    build:
-      context: .
-      dockerfile: src/dashboard/Dockerfile
-    restart: unless-stopped
-    env_file: .env
+      - "5555:5432"
     volumes:
-      - ./data:/data
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
     ports:
-      - "3000:3000"
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  telegram-bot:
-    build:
-      context: .
-      dockerfile: src/telegram/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
-
-  scorer:
-    build:
-      context: .
-      dockerfile: src/agents/scorer/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
-      - ./models:/models
-
-  builder:
-    build:
-      context: .
-      dockerfile: src/agents/builder/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
-
-  deployer:
-    build:
-      context: .
-      dockerfile: src/agents/deployer/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
-
-  tracker:
-    build:
-      context: .
-      dockerfile: src/agents/tracker/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
-
-  scout-light:
-    build:
-      context: .
-      dockerfile: src/agents/scout/Dockerfile.light
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/data
+volumes:
+  pgdata:

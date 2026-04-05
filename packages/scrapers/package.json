@@ -1,0 +1,26 @@
+{
+  "name": "@ghostmarket/scrapers",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "npx tsx src/index.ts"
+  },
+  "dependencies": {
+    "@bull-board/api": "^6.5.0",
+    "@bull-board/express": "^6.5.0",
+    "@ghostmarket/scoring": "*",
+    "@ghostmarket/shared": "*",
+    "bullmq": "^5.25.0",
+    "cheerio": "^1.0.0",
+    "cron": "^3.2.0",
+    "drizzle-orm": "^0.34.0",
+    "express": "^4.21.0",
+    "ioredis": "^5.4.0",
+    "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0"
+  }
+}
