@@ -55,6 +55,66 @@ interface Scraper {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Demo data (used when API is unavailable)                           */
+/* ------------------------------------------------------------------ */
+
+const DEMO_STATS: Stats = {
+  products: { total: 60, last_24h: 60, last_7d: 60 },
+  scoring: { total_scored: 30, pending_review: 29, approved: 1, avg_approved_score: 77.5 },
+  top_categories: [{ category: 'Consumer Electronics', count: 22 }, { category: 'Home & Kitchen', count: 18 }],
+  top_keywords: [{ keyword: 'stanley cup', interest_score: 92 }, { keyword: 'cloud slides', interest_score: 88 }],
+  scraper_health: { success_rate_24h: 100, total_runs_24h: 3 },
+};
+
+const DEMO_PRODUCTS: Product[] = [
+  { id: '1', score: '77.500', sales_velocity_score: '70.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Stanley Quencher H2.0 Tumbler 40oz Stainless Steel', source: 'amazon', price_usd: '35.00', estimated_margin_pct: '54.29', fulfillment_type: 'wholesale', trend_keywords: ['stanley cup'], status: 'pending' },
+  { id: '2', score: '73.250', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '100.000', competition_score: '90.000', title: 'Cloud Slides Pillow Slippers Ultra Soft Recovery', source: 'tiktok_shop', price_usd: '14.99', estimated_margin_pct: '46.66', fulfillment_type: 'dropship', trend_keywords: ['cloud slides'], status: 'pending' },
+  { id: '3', score: '73.000', sales_velocity_score: '55.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Mini Projector 1080P WiFi Bluetooth Home Theater', source: 'aliexpress', price_usd: '42.50', estimated_margin_pct: '54.12', fulfillment_type: 'wholesale', trend_keywords: ['mini projector'], status: 'pending' },
+  { id: '4', score: '70.250', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '100.000', competition_score: '90.000', title: 'Scalp Massager Shampoo Brush Silicone Head Scrubber', source: 'tiktok_shop', price_usd: '5.99', estimated_margin_pct: '26.67', fulfillment_type: 'dropship', trend_keywords: ['scalp massager'], status: 'pending' },
+  { id: '5', score: '69.750', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '86.000', competition_score: '90.000', title: 'Air Fryer 5.8QT Large Capacity Oil-Free Digital Touch', source: 'amazon', price_usd: '44.99', estimated_margin_pct: '48.89', fulfillment_type: 'wholesale', trend_keywords: ['air fryer'], status: 'pending' },
+  { id: '6', score: '65.500', sales_velocity_score: '55.000', margin_score: '40.000', trend_score: '100.000', competition_score: '70.000', title: 'LED Strip Lights 50ft RGB Color Changing with Remote', source: 'amazon', price_usd: '12.99', estimated_margin_pct: '36.52', fulfillment_type: 'dropship', trend_keywords: ['LED strip lights'], status: 'pending' },
+  { id: '7', score: '63.250', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '78.000', competition_score: '90.000', title: 'Wireless Earbuds Bluetooth 5.3 IPX7 Waterproof', source: 'amazon', price_usd: '19.99', estimated_margin_pct: '47.50', fulfillment_type: 'wholesale', trend_keywords: ['wireless earbuds'], status: 'pending' },
+  { id: '8', score: '61.000', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '72.000', competition_score: '70.000', title: 'Portable Neck Fan USB Rechargeable Bladeless 3-Speed', source: 'aliexpress', price_usd: '8.99', estimated_margin_pct: '22.22', fulfillment_type: 'dropship', trend_keywords: ['portable fan'], status: 'pending' },
+  { id: '9', score: '58.500', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '66.000', competition_score: '70.000', title: 'Smart Watch Fitness Tracker Heart Rate Blood Oxygen', source: 'amazon', price_usd: '29.99', estimated_margin_pct: '53.33', fulfillment_type: 'wholesale', trend_keywords: ['smart watch'], status: 'pending' },
+  { id: '10', score: '55.000', sales_velocity_score: '25.000', margin_score: '55.000', trend_score: '64.000', competition_score: '90.000', title: 'Pet Camera WiFi Dog Treat Dispenser 1080P Night Vision', source: 'tiktok_shop', price_usd: '32.99', estimated_margin_pct: '44.83', fulfillment_type: 'wholesale', trend_keywords: ['pet camera'], status: 'pending' },
+];
+
+const DEMO_TRENDS: Trend[] = [
+  { id: 't1', keyword: 'stanley cup', interest_score: 92, velocity: '4.1000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't2', keyword: 'cloud slides', interest_score: 88, velocity: '9.1000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't3', keyword: 'air fryer', interest_score: 87, velocity: '3.4000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't4', keyword: 'portable fan', interest_score: 85, velocity: '7.2000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't5', keyword: 'smart watch', interest_score: 83, velocity: '2.0000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't6', keyword: 'mini projector', interest_score: 81, velocity: '6.1000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't7', keyword: 'wireless earbuds', interest_score: 78, velocity: '1.8000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't8', keyword: 'scalp massager', interest_score: 77, velocity: '8.3000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't9', keyword: 'posture corrector', interest_score: 74, velocity: '5.8000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't10', keyword: 'LED strip lights', interest_score: 72, velocity: '3.5000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't11', keyword: 'ice roller', interest_score: 71, velocity: '4.5000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't12', keyword: 'resistance bands', interest_score: 70, velocity: '2.9000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't13', keyword: 'ring light', interest_score: 68, velocity: '2.3000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't14', keyword: 'sunset lamp', interest_score: 66, velocity: '3.2000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+  { id: 't15', keyword: 'pet camera', interest_score: 64, velocity: '2.6000', source: 'google_trends', geo: 'US', captured_at: new Date().toISOString() },
+];
+
+const DEMO_SCRAPERS: Scraper[] = [
+  { name: 'scrape:google-trends', schedule: '0 */2 * * *', last_run: new Date(Date.now() - 3600000).toISOString(), last_status: 'completed', products_found_last_run: 10, products_found_24h: 30, runs_24h: 12 },
+  { name: 'scrape:aliexpress', schedule: '0 */12 * * *', last_run: new Date(Date.now() - 7200000).toISOString(), last_status: 'completed', products_found_last_run: 45, products_found_24h: 90, runs_24h: 2 },
+  { name: 'scrape:amazon-trending', schedule: '0 */6 * * *', last_run: new Date(Date.now() - 5400000).toISOString(), last_status: 'completed', products_found_last_run: 32, products_found_24h: 128, runs_24h: 4 },
+  { name: 'scrape:tiktok-shop', schedule: '0 */4 * * *', last_run: new Date(Date.now() - 1800000).toISOString(), last_status: 'completed', products_found_last_run: 28, products_found_24h: 168, runs_24h: 6 },
+];
+
+async function fetchWithFallback<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    return fallback;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -136,16 +196,16 @@ export default function LandingPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/stats').then((r) => r.json()),
-      fetch('/api/products?limit=10').then((r) => r.json()),
-      fetch('/api/trends?limit=15').then((r) => r.json()),
-      fetch('/api/scrapers').then((r) => r.json()),
+      fetchWithFallback('/api/stats', DEMO_STATS),
+      fetchWithFallback('/api/products?limit=10', { products: DEMO_PRODUCTS }),
+      fetchWithFallback('/api/trends?limit=15', { trends: DEMO_TRENDS }),
+      fetchWithFallback('/api/scrapers', { scrapers: DEMO_SCRAPERS }),
     ])
       .then(([s, p, t, sc]) => {
         setStats(s);
-        setProducts(p.products ?? []);
-        setTrends(t.trends ?? []);
-        setScrapers(sc.scrapers ?? []);
+        setProducts(p.products ?? DEMO_PRODUCTS);
+        setTrends(t.trends ?? DEMO_TRENDS);
+        setScrapers(sc.scrapers ?? DEMO_SCRAPERS);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
