@@ -15,7 +15,8 @@ COPY packages/shared/ ./packages/shared/
 COPY packages/scrapers/ ./packages/scrapers/
 COPY packages/scoring/ ./packages/scoring/
 
-RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/shared && npm run build --workspace=packages/scoring
 
 WORKDIR /app/packages/scrapers
-CMD ["npx", "tsx", "src/index.ts"]
+# Railway sets PORT at runtime — map it to PORT_API for the scraper fleet
+CMD ["sh", "-c", "PORT_API=${PORT:-3007} exec npx tsx src/index.ts"]
