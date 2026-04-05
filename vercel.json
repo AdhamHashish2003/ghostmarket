@@ -1,0 +1,7 @@
+{
+  "buildCommand": "npm run build --workspace=@ghostmarket/shared && npm run build --workspace=@ghostmarket/dashboard",
+  "outputDirectory": "packages/dashboard/.next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "ignoreCommand": "echo 1"
+}

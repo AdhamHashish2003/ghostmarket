@@ -1,0 +1,14 @@
+node_modules
+data
+backtest
+.next
+dist
+*.db
+*.db-shm
+*.db-wal
+src/dashboard
+src/agents
+src/models
+src/shared
+models
+.git

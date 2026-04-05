@@ -16,3 +16,25 @@ Thumbs.db
 
 # Build artifacts
 *.tsbuildinfo
+.vercel
+
+# Data & deploy artifacts
+data/deploy/
+data/ghostmarket.db*
+data/images/
+data/landing_pages/
+data/tunnel_state.json
+backtest/data/raw/
+
+# Python
+__pycache__/
+
+# Models
+models/training_data/
+
+# Netlify
+.netlify/
+
+# SQLite
+*.db-shm
+*.db-wal

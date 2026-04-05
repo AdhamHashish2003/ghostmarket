@@ -1,0 +1,70 @@
+{
+  "version": "xgb_v1",
+  "accuracy": 0.9285714285714286,
+  "trained_at": "2026-03-31T00:54:32.252667+00:00",
+  "samples": 68,
+  "feature_columns": [
+    "avg_signal_strength",
+    "competition_level",
+    "content_potential",
+    "cross_source_validation",
+    "fulfillment_ease",
+    "margin_pct",
+    "margin_potential",
+    "max_cross_source_hits",
+    "seasonality_fit",
+    "signal_count",
+    "trend_velocity",
+    "unit_cost"
+  ],
+  "feature_importance": [
+    [
+      "fulfillment_ease",
+      0.9042332768440247
+    ],
+    [
+      "seasonality_fit",
+      0.033934902399778366
+    ],
+    [
+      "trend_velocity",
+      0.022876983508467674
+    ],
+    [
+      "unit_cost",
+      0.012471969239413738
+    ],
+    [
+      "margin_pct",
+      0.01194276474416256
+    ],
+    [
+      "signal_count",
+      0.007391462568193674
+    ],
+    [
+      "avg_signal_strength",
+      0.007148650474846363
+    ],
+    [
+      "competition_level",
+      0.0
+    ],
+    [
+      "content_potential",
+      0.0
+    ],
+    [
+      "cross_source_validation",
+      0.0
+    ],
+    [
+      "margin_potential",
+      0.0
+    ],
+    [
+      "max_cross_source_hits",
+      0.0
+    ]
+  ]
+}
