@@ -4,441 +4,138 @@ import { db, rawProducts, trendSignals, logger } from '@ghostmarket/shared';
 import type { ScraperJobConfig } from '../queue.js';
 import { mkdir } from 'node:fs/promises';
 
-// --- User-agent rotation ---
+// --- Helpers ---
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:126.0) Gecko/20100101 Firefox/126.0',
-  'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 OPR/110.0.0.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 ];
 
-function randomUA(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
+function randomUA() { return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]; }
+function randomDelay(min: number, max: number) { return new Promise<void>(r => setTimeout(r, Math.floor(Math.random() * (max - min + 1)) + min)); }
 
-// --- Helpers ---
-
-function randomDelay(minMs: number, maxMs: number): Promise<void> {
-  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-async function screenshotOnError(page: Page, label: string): Promise<void> {
+async function screenshot(page: Page, label: string) {
   try {
-    const dir = '/tmp/scraper-errors';
-    await mkdir(dir, { recursive: true });
-    const filename = `${dir}/tiktok-${label}-${Date.now()}.png`;
-    await page.screenshot({ path: filename, fullPage: false });
-    logger.info({ filename }, 'Error screenshot saved');
-  } catch {
-    // Don't cascade
+    await mkdir('/tmp/scraper-errors', { recursive: true });
+    const f = `/tmp/scraper-errors/tiktok-${label}-${Date.now()}.png`;
+    await page.screenshot({ path: f, fullPage: false });
+    logger.info({ filename: f }, 'Screenshot saved');
+  } catch { /* ignore */ }
+}
+
+function parsePrice(t: string): number | null {
+  if (!t) return null;
+  const m = t.replace(/,/g, '').match(/\$?\s*(\d+\.?\d*)/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+function parseSoldCount(t: string): number {
+  if (!t) return 0;
+  const c = t.toLowerCase().replace(/,/g, '');
+  const k = c.match(/([\d.]+)\s*k/); if (k) return Math.round(parseFloat(k[1]) * 1000);
+  const m = c.match(/([\d.]+)\s*m/); if (m) return Math.round(parseFloat(m[1]) * 1_000_000);
+  const n = c.match(/(\d+)/); return n ? parseInt(n[1], 10) : 0;
+}
+
+function parseViewCount(t: string): number {
+  if (!t) return 0;
+  const c = t.toLowerCase().replace(/,/g, '').trim();
+  const b = c.match(/([\d.]+)\s*b/); if (b) return Math.round(parseFloat(b[1]) * 1_000_000_000);
+  const m = c.match(/([\d.]+)\s*m/); if (m) return Math.round(parseFloat(m[1]) * 1_000_000);
+  const k = c.match(/([\d.]+)\s*k/); if (k) return Math.round(parseFloat(k[1]) * 1_000);
+  const n = c.match(/(\d+)/); return n ? parseInt(n[1], 10) : 0;
+}
+
+function extractProductId(url: string): string | null {
+  const p = url.match(/\/product(?:-detail)?\/(\d+)/); if (p) return p[1];
+  const q = url.match(/[?&]product_id=(\d+)/); if (q) return q[1];
+  // TikTok shop URLs with long numeric IDs
+  const l = url.match(/(\d{10,})/); if (l) return l[1];
+  // Fallback: generate a hash from the URL for dedup
+  if (url.includes('shop.tiktok.com') || url.includes('tiktok.com/shop')) {
+    let hash = 0;
+    for (let i = 0; i < url.length; i++) hash = ((hash << 5) - hash + url.charCodeAt(i)) | 0;
+    return `tt${Math.abs(hash)}`;
   }
+  return null;
 }
 
-// --- Bot detection checks ---
+// --- Navigate with block detection ---
 
-async function isBlocked(page: Page): Promise<'captcha' | 'login' | false> {
-  const result = await page.evaluate(() => {
-    const body = document.body?.textContent?.toLowerCase() ?? '';
-    const url = window.location.href.toLowerCase();
-
-    // CAPTCHA indicators
-    if (
-      body.includes('verify to continue') ||
-      body.includes('verify your identity') ||
-      body.includes('slide to verify') ||
-      !!document.querySelector('[class*="captcha"]') ||
-      !!document.querySelector('#captcha-verify-container')
-    ) {
-      return 'captcha';
-    }
-
-    // Login wall
-    if (
-      url.includes('/login') ||
-      body.includes('log in to continue') ||
-      body.includes('sign in to tiktok') ||
-      (!!document.querySelector('[class*="login"]') && body.length < 2000)
-    ) {
-      return 'login';
-    }
-
-    return false;
-  });
-
-  return result as 'captcha' | 'login' | false;
-}
-
-// --- Navigate with retry + block detection ---
-
-async function navigateSafely(
-  page: Page,
-  url: string,
-): Promise<'ok' | 'blocked' | 'failed'> {
+async function navigateSafely(page: Page, url: string): Promise<'ok' | 'blocked' | 'failed'> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      if (resp && resp.status() === 404) return 'failed';
 
-      if (resp && resp.status() === 404) {
-        logger.warn({ url }, 'Page returned 404 — skipping');
-        return 'failed';
-      }
+      await page.waitForTimeout(3000);
 
-      const blockStatus = await isBlocked(page);
-      if (blockStatus) {
-        logger.warn({ url, blockStatus, attempt }, 'TikTok blocked access');
-        if (attempt < 2) {
-          await screenshotOnError(page, `${blockStatus}-attempt${attempt}`);
-          await page.waitForTimeout(15_000);
-          continue;
-        }
-        await screenshotOnError(page, `${blockStatus}-final`);
+      const blocked = await page.evaluate(`(() => {
+        var body = (document.body.textContent || '').toLowerCase();
+        var url = location.href.toLowerCase();
+        if (body.indexOf('verify to continue') >= 0 || body.indexOf('slide to verify') >= 0 || document.querySelector('#captcha-verify-container')) return 'captcha';
+        if (url.indexOf('/login') >= 0 || (body.indexOf('log in to continue') >= 0)) return 'login';
+        return false;
+      })()`);
+
+      if (blocked) {
+        logger.warn({ url, blocked, attempt }, 'TikTok blocked');
+        await screenshot(page, `${blocked}-${attempt}`);
+        if (attempt < 2) { await page.waitForTimeout(15_000); continue; }
         return 'blocked';
       }
-
       return 'ok';
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn({ url, attempt, err: msg }, 'TikTok navigation error');
-      if (attempt < 2) {
-        await page.waitForTimeout(10_000);
-      }
+      logger.warn({ url, attempt, err: err instanceof Error ? err.message : String(err) }, 'TikTok nav error');
+      if (attempt < 2) await page.waitForTimeout(10_000);
     }
   }
   return 'failed';
 }
 
-// --- Parsing helpers ---
+// --- Google search fallback for TikTok Shop products ---
 
-function parsePrice(text: string): number | null {
-  if (!text) return null;
-  const match = text.replace(/,/g, '').match(/\$?\s*(\d+\.?\d*)/);
-  return match ? parseFloat(match[1]) : null;
-}
+const GOOGLE_EXTRACT_SCRIPT = `(() => {
+  var results = [];
+  var junkTitles = ['ai mode', 'shopping', 'images', 'videos', 'news', 'maps', 'past hour', 'past day', 'past week', 'past month', 'past year', 'all', 'verbatim'];
 
-function parseSoldCount(text: string): number {
-  if (!text) return 0;
-  const cleaned = text.toLowerCase().replace(/,/g, '');
+  // Only match absolute TikTok Shop URLs — not Google internal /search links
+  var isTikTokProduct = function(href) {
+    return (href.indexOf('https://shop.tiktok.com') === 0 || href.indexOf('https://www.tiktok.com/shop') === 0 || href.indexOf('https://www.tiktok.com/view/product') === 0) && href.indexOf('/search') === -1;
+  };
 
-  const kMatch = cleaned.match(/([\d.]+)\s*k/);
-  if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1_000);
+  // Search through Google result blocks with h3 titles
+  var resultBlocks = document.querySelectorAll('.g');
+  resultBlocks.forEach(function(block) {
+    var titleEl = block.querySelector('h3');
+    if (!titleEl) return;
+    var title = titleEl.textContent.trim();
+    if (title.length < 10 || junkTitles.indexOf(title.toLowerCase()) >= 0) return;
 
-  const mMatch = cleaned.match(/([\d.]+)\s*m/);
-  if (mMatch) return Math.round(parseFloat(mMatch[1]) * 1_000_000);
-
-  const numMatch = cleaned.match(/(\d+)/);
-  return numMatch ? parseInt(numMatch[1], 10) : 0;
-}
-
-function parseViewCount(text: string): number {
-  if (!text) return 0;
-  const cleaned = text.toLowerCase().replace(/,/g, '').trim();
-
-  const bMatch = cleaned.match(/([\d.]+)\s*b/);
-  if (bMatch) return Math.round(parseFloat(bMatch[1]) * 1_000_000_000);
-
-  const mMatch = cleaned.match(/([\d.]+)\s*m/);
-  if (mMatch) return Math.round(parseFloat(mMatch[1]) * 1_000_000);
-
-  const kMatch = cleaned.match(/([\d.]+)\s*k/);
-  if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1_000);
-
-  const numMatch = cleaned.match(/(\d+)/);
-  return numMatch ? parseInt(numMatch[1], 10) : 0;
-}
-
-function extractProductId(url: string): string | null {
-  // TikTok Shop product URLs vary; try common patterns
-  // /product/1234567890, /product-detail/1234567890, ?product_id=123
-  const pathMatch = url.match(/\/product(?:-detail)?\/(\d+)/);
-  if (pathMatch) return pathMatch[1];
-
-  const paramMatch = url.match(/[?&]product_id=(\d+)/);
-  if (paramMatch) return paramMatch[1];
-
-  // Fallback: grab any long numeric ID from the URL
-  const longId = url.match(/(\d{10,})/);
-  return longId ? longId[1] : null;
-}
-
-function parseRating(text: string): number | null {
-  if (!text) return null;
-  const match = text.match(/([\d.]+)/);
-  if (!match) return null;
-  const v = parseFloat(match[1]);
-  return v >= 0 && v <= 5 ? v : null;
-}
-
-// --- TikTok Shop direct page extraction ---
-
-interface ShopProductExtract {
-  title: string;
-  price: string;
-  soldText: string;
-  reviewCount: string;
-  rating: string;
-  productUrl: string;
-  imageUrl: string;
-}
-
-const SHOP_CARD_SELECTORS = [
-  '[class*="ProductCard"]',
-  '[class*="product-card"]',
-  '[class*="ProductItem"]',
-  '[class*="product-item"]',
-  '[data-e2e="product-card"]',
-  '[class*="GoodsCard"]',
-];
-
-async function extractShopProducts(page: Page): Promise<ShopProductExtract[]> {
-  return page.evaluate((selectors: string[]) => {
-    let cards: Element[] = [];
-    for (const sel of selectors) {
-      const found = document.querySelectorAll(sel);
-      if (found.length > 0) {
-        cards = Array.from(found);
-        break;
-      }
-    }
-
-    // Fallback: any link to a product detail page
-    if (cards.length === 0) {
-      const links = document.querySelectorAll('a[href*="/product"]');
-      cards = Array.from(links).map(
-        (a) => a.closest('[class*="card"], [class*="item"], li, article') ?? a,
-      );
-    }
-
-    if (cards.length === 0) return [];
-
-    return cards.map((card) => {
-      const titleEl = card.querySelector(
-        '[class*="title"], [class*="name"], h3, h2, [class*="Title"]',
-      );
-      const title = titleEl?.textContent?.trim() ?? '';
-
-      const priceEl = card.querySelector(
-        '[class*="price"], [class*="Price"]',
-      );
-      const price = priceEl?.textContent?.trim() ?? '';
-
-      const soldEl = card.querySelector(
-        '[class*="sold"], [class*="sale"], [class*="Sold"]',
-      );
-      const soldText = soldEl?.textContent?.trim() ?? '';
-
-      const reviewEl = card.querySelector(
-        '[class*="review"], [class*="Review"]',
-      );
-      const reviewCount = reviewEl?.textContent?.trim() ?? '';
-
-      const ratingEl = card.querySelector(
-        '[class*="star"], [class*="rating"], [class*="Rating"]',
-      );
-      const rating = ratingEl?.textContent?.trim() ?? '';
-
-      const linkEl = card.querySelector('a[href*="/product"]') ?? card.closest('a');
-      const href = linkEl?.getAttribute('href') ?? '';
-      const productUrl = href.startsWith('http')
-        ? href
-        : href.startsWith('//')
-          ? `https:${href}`
-          : href.startsWith('/')
-            ? `https://shop.tiktok.com${href}`
-            : '';
-
-      const imgEl = card.querySelector('img');
-      const imageUrl = imgEl?.getAttribute('src') ?? imgEl?.getAttribute('data-src') ?? '';
-
-      return { title, price, soldText, reviewCount, rating, productUrl, imageUrl };
+    var links = block.querySelectorAll('a[href]');
+    links.forEach(function(a) {
+      var href = a.getAttribute('href') || '';
+      if (!isTikTokProduct(href)) return;
+      var descEl = block.querySelector('[class*="VwiC3b"]');
+      var desc = descEl ? descEl.textContent.trim() : '';
+      var priceMatch = (title + ' ' + desc).match(/\\$(\\d+\\.?\\d*)/);
+      var price = priceMatch ? '$' + priceMatch[1] : '';
+      results.push({ title: title.substring(0, 300), price: price, productUrl: href, desc: desc.substring(0, 200) });
     });
-  }, SHOP_CARD_SELECTORS);
-}
-
-// --- TikTok search extraction (fallback) ---
-
-interface TikTokSearchExtract {
-  videoDesc: string;
-  productLinks: string[];
-  hashtags: string[];
-  viewCount: string;
-}
-
-async function extractSearchResults(page: Page): Promise<TikTokSearchExtract[]> {
-  return page.evaluate(() => {
-    const items: { videoDesc: string; productLinks: string[]; hashtags: string[]; viewCount: string }[] = [];
-
-    // Video cards on search results
-    const videoCards = document.querySelectorAll(
-      '[class*="DivItemContainerV2"], [data-e2e="search-card-item"], [class*="video-feed-item"], [class*="VideoCard"]',
-    );
-
-    for (const card of Array.from(videoCards)) {
-      const descEl = card.querySelector(
-        '[class*="SpanText"], [data-e2e="search-card-desc"], [class*="video-desc"], [class*="desc"]',
-      );
-      const videoDesc = descEl?.textContent?.trim() ?? '';
-
-      // Extract any product/shop links
-      const allLinks = card.querySelectorAll('a[href]');
-      const productLinks: string[] = [];
-      for (const a of Array.from(allLinks)) {
-        const href = a.getAttribute('href') ?? '';
-        if (
-          href.includes('/product') ||
-          href.includes('shop.tiktok') ||
-          href.includes('/shop/')
-        ) {
-          productLinks.push(href.startsWith('http') ? href : `https://www.tiktok.com${href}`);
-        }
-      }
-
-      // Extract hashtags
-      const hashtagEls = card.querySelectorAll('a[href*="/tag/"], [class*="HashTag"], [class*="hashtag"]');
-      const hashtags = Array.from(hashtagEls)
-        .map((el) => el.textContent?.trim() ?? '')
-        .filter(Boolean);
-
-      // View count
-      const viewEl = card.querySelector(
-        '[class*="video-count"], [data-e2e="search-card-like-count"], [class*="view"], strong',
-      );
-      const viewCount = viewEl?.textContent?.trim() ?? '';
-
-      items.push({ videoDesc, productLinks, hashtags, viewCount });
-    }
-
-    return items;
   });
-}
 
-// --- Hashtag trend extraction ---
+  var seen = {};
+  return results.filter(function(r) { if (seen[r.title]) return false; seen[r.title] = true; return true; });
+})()`;
 
-interface HashtagData {
-  tag: string;
-  viewCount: number;
-}
+// --- TikTok hashtag trend_signals extraction ---
 
 const TRENDING_HASHTAGS = [
-  'tiktokmademebuyit',
-  'amazonfinds',
-  'shopfinds',
-  'tiktokshop',
-  'viralproducts',
-  'trendingproducts',
+  'tiktokmademebuyit', 'amazonfinds', 'tiktokshop', 'viralproducts',
+  'trendingproducts', 'shopfinds', 'musthaves', 'bestfinds',
+  'tiktokfinds', 'homefinds', 'beautyfinds', 'techfinds',
 ];
-
-async function extractHashtagViews(page: Page, tag: string): Promise<HashtagData | null> {
-  const url = `https://www.tiktok.com/tag/${tag}`;
-  const status = await navigateSafely(page, url);
-  if (status !== 'ok') return null;
-
-  await page.waitForTimeout(3000);
-
-  const viewText = await page.evaluate(() => {
-    // View count usually in the header section of the tag page
-    const viewEl = document.querySelector(
-      '[class*="StatsCount"], [data-e2e="challenge-vvcount"], [class*="view-count"], h2 + h3, [class*="stats"] strong',
-    );
-    return viewEl?.textContent?.trim() ?? '';
-  });
-
-  if (!viewText) return null;
-
-  const viewCount = parseViewCount(viewText);
-  return viewCount > 0 ? { tag, viewCount } : null;
-}
-
-async function captureHashtagTrends(
-  page: Page,
-  collectedHashtags: string[],
-): Promise<number> {
-  // Merge default trending hashtags with any collected from videos
-  const allTags = new Set([
-    ...TRENDING_HASHTAGS,
-    ...collectedHashtags
-      .map((h) => h.replace(/^#/, '').toLowerCase())
-      .filter((h) => h.length > 2),
-  ]);
-
-  let captured = 0;
-
-  for (const tag of allTags) {
-    try {
-      const data = await extractHashtagViews(page, tag);
-      if (!data) continue;
-
-      // Calculate interest_score: normalize view count to 0-100
-      // Rough scale: 1B+ views = 100, 100M = 80, 10M = 60, 1M = 40, 100K = 20
-      let interestScore: number;
-      if (data.viewCount >= 1_000_000_000) interestScore = 100;
-      else if (data.viewCount >= 100_000_000) interestScore = 80;
-      else if (data.viewCount >= 10_000_000) interestScore = 60;
-      else if (data.viewCount >= 1_000_000) interestScore = 40;
-      else if (data.viewCount >= 100_000) interestScore = 20;
-      else interestScore = 10;
-
-      // Calculate velocity from previous capture
-      const prevRows = await db
-        .select({
-          interest_score: trendSignals.interest_score,
-          captured_at: trendSignals.captured_at,
-        })
-        .from(trendSignals)
-        .where(eq(trendSignals.keyword, `#${data.tag}`))
-        .orderBy(desc(trendSignals.captured_at))
-        .limit(1);
-
-      let velocity = interestScore; // default: treat as new
-      if (prevRows.length > 0 && prevRows[0].captured_at) {
-        const hoursElapsed =
-          (Date.now() - prevRows[0].captured_at.getTime()) / (1000 * 60 * 60);
-        if (hoursElapsed > 0.01) {
-          velocity = (interestScore - prevRows[0].interest_score) / hoursElapsed;
-        }
-      }
-
-      await db.insert(trendSignals).values({
-        keyword: `#${data.tag}`,
-        source: 'tiktok',
-        interest_score: interestScore,
-        velocity: velocity.toFixed(4),
-        related_queries: [...allTags].filter((t) => t !== data.tag).slice(0, 10),
-        geo: 'US',
-        captured_at: new Date(),
-      });
-
-      captured++;
-      logger.info(
-        { tag: data.tag, views: data.viewCount, interestScore },
-        'TikTok hashtag trend captured',
-      );
-
-      await randomDelay(3000, 6000);
-    } catch (err) {
-      logger.error({ err, tag }, 'Failed to capture hashtag trend');
-    }
-  }
-
-  return captured;
-}
-
-// --- Scroll for lazy loading ---
-
-async function scrollForContent(page: Page, scrolls: number): Promise<void> {
-  for (let i = 0; i < scrolls; i++) {
-    await page.evaluate(() => window.scrollBy(0, 600));
-    await page.waitForTimeout(1000);
-  }
-  await page.waitForTimeout(2000);
-}
 
 // --- Main scraper ---
 
@@ -447,7 +144,6 @@ export async function scrapeTiktokShop(
   config: ScraperJobConfig,
 ): Promise<{ productsFound: number }> {
   const maxPages = config.max_pages ?? 3;
-  const customQueries = (config as Record<string, unknown>).search_queries as string[] | undefined;
   let totalInserted = 0;
   const collectedHashtags: string[] = [];
 
@@ -456,175 +152,255 @@ export async function scrapeTiktokShop(
   let browser: Browser | null = null;
 
   try {
+    const isHeaded = process.env.SCRAPER_HEADED === 'true';
     browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      headless: !isHeaded,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
     });
 
     const context = await browser.newContext({
       userAgent: randomUA(),
       viewport: { width: 1920, height: 1080 },
       locale: 'en-US',
+      timezoneId: 'America/New_York',
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+      },
+    });
+
+    // Hide webdriver
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
 
     const page = await context.newPage();
     page.setDefaultTimeout(45_000);
+
+    // Block heavy resources
+    await page.route('**/*.{woff,woff2,ttf,otf}', r => r.abort());
+    await page.route('**/analytics*', r => r.abort());
 
     // ============================================================
     // Phase 1: Try TikTok Shop direct pages
     // ============================================================
 
     const shopUrls = [
-      'https://shop.tiktok.com/bestsellers',
       'https://shop.tiktok.com/',
-      'https://shop.tiktok.com/browse',
+      'https://shop.tiktok.com/bestsellers',
     ];
-
-    let shopSucceeded = false;
 
     for (const url of shopUrls) {
       logger.info({ url, batchId }, 'Trying TikTok Shop direct URL');
-
       const status = await navigateSafely(page, url);
       if (status !== 'ok') {
-        logger.warn({ url, status, batchId }, 'TikTok Shop URL not accessible — trying next');
+        logger.warn({ url, status, batchId }, 'TikTok Shop blocked — trying next');
         continue;
       }
 
-      await scrollForContent(page, 10);
-
-      const products = await extractShopProducts(page);
-      if (products.length === 0) {
-        logger.warn({ url, batchId }, 'No products found on TikTok Shop page');
-        await screenshotOnError(page, `shop-empty-${Date.now()}`);
-        continue;
+      // Scroll for lazy load
+      for (let i = 0; i < 10; i++) {
+        await page.evaluate(() => window.scrollBy(0, 600));
+        await page.waitForTimeout(1000);
       }
 
-      shopSucceeded = true;
-      logger.info({ url, count: products.length, batchId }, 'TikTok Shop products extracted');
-
-      for (const raw of products) {
-        try {
-          if (!raw.title || !raw.productUrl) continue;
-
-          const externalId = extractProductId(raw.productUrl);
-          if (!externalId) continue;
-
-          const priceUsd = parsePrice(raw.price);
-          const soldCount = parseSoldCount(raw.soldText);
-          const rating = parseRating(raw.rating);
-          const reviewCount = parseSoldCount(raw.reviewCount);
-
-          let imageUrl = raw.imageUrl;
-          if (imageUrl.startsWith('//')) imageUrl = `https:${imageUrl}`;
-
-          await db.insert(rawProducts).values({
-            source: 'tiktok_shop',
-            external_id: externalId,
-            title: raw.title.slice(0, 500),
-            price_usd: (priceUsd ?? 0).toFixed(2),
-            currency: 'USD',
-            estimated_monthly_sales: soldCount || null,
-            review_count: reviewCount,
-            rating: rating?.toFixed(2) ?? null,
-            category: 'TikTok Shop',
-            product_url: raw.productUrl,
-            image_urls: imageUrl ? [imageUrl] : [],
-            tags: ['tiktok_shop'],
-            batch_id: batchId,
-          });
-
-          totalInserted++;
-        } catch (err) {
-          logger.error({ err, title: raw.title?.slice(0, 60), batchId }, 'Failed to insert TikTok Shop product');
+      // Extract using raw JS
+      const products = await page.evaluate(`(() => {
+        var selectors = ['[class*="ProductCard"]', '[class*="product-card"]', '[data-e2e="product-card"]', '[class*="GoodsCard"]', 'a[href*="/product"]'];
+        var cards = [];
+        for (var i = 0; i < selectors.length; i++) {
+          var found = document.querySelectorAll(selectors[i]);
+          if (found.length > 0) { cards = Array.from(found); break; }
         }
-      }
+        if (cards.length === 0) return [];
+        return cards.map(function(card) {
+          var titleEl = card.querySelector('[class*="title"], [class*="name"], h3, h2');
+          var title = titleEl ? titleEl.textContent.trim() : '';
+          var priceEl = card.querySelector('[class*="price"], [class*="Price"]');
+          var price = priceEl ? priceEl.textContent.trim() : '';
+          var soldEl = card.querySelector('[class*="sold"], [class*="sale"]');
+          var sold = soldEl ? soldEl.textContent.trim() : '';
+          var linkEl = card.querySelector('a[href*="/product"]') || card.closest('a');
+          var href = linkEl ? (linkEl.getAttribute('href') || '') : '';
+          var productUrl = href.startsWith('http') ? href : href.startsWith('//') ? 'https:' + href : href.startsWith('/') ? 'https://shop.tiktok.com' + href : '';
+          var imgEl = card.querySelector('img');
+          var imageUrl = imgEl ? (imgEl.getAttribute('src') || '') : '';
+          return { title: title, price: price, sold: sold, productUrl: productUrl, imageUrl: imageUrl };
+        }).filter(function(p) { return p.title && p.title.length > 3 && p.productUrl; });
+      })()`) as any[];
 
-      await randomDelay(5000, 8000);
-    }
-
-    // ============================================================
-    // Phase 2: Fallback — search TikTok for trending products
-    // ============================================================
-
-    const searchQueries = [
-      'tiktokmademebuyit',
-      'trending products 2025',
-      'viral products',
-      ...(customQueries ?? []),
-    ];
-
-    for (const query of searchQueries) {
-      const searchUrl = `https://www.tiktok.com/search?q=${encodeURIComponent(query)}`;
-      logger.info({ query, batchId }, 'Searching TikTok for product trends');
-
-      const status = await navigateSafely(page, searchUrl);
-      if (status !== 'ok') {
-        logger.warn({ query, status, batchId }, 'TikTok search blocked — skipping query');
-        continue;
-      }
-
-      await scrollForContent(page, 8);
-
-      const results = await extractSearchResults(page);
-      logger.info(
-        { query, resultCount: results.length, batchId },
-        'TikTok search results extracted',
-      );
-
-      for (const result of results) {
-        // Collect hashtags for Phase 3
-        for (const tag of result.hashtags) {
-          collectedHashtags.push(tag);
-        }
-
-        // Process any direct product links found in video descriptions
-        for (const productUrl of result.productLinks) {
+      if (products.length > 0) {
+        logger.info({ url, count: products.length, batchId }, 'TikTok Shop products found!');
+        for (const raw of products) {
           try {
-            const externalId = extractProductId(productUrl);
+            const externalId = extractProductId(raw.productUrl);
             if (!externalId) continue;
-
-            // Use the video description as a rough product title
-            const title = result.videoDesc.slice(0, 200) || `TikTok viral product ${externalId}`;
-
+            const priceUsd = parsePrice(raw.price);
+            const soldCount = parseSoldCount(raw.sold);
             await db.insert(rawProducts).values({
-              source: 'tiktok_shop',
-              external_id: externalId,
-              title,
-              price_usd: '0.00', // Price unknown from search — will be enriched later
-              currency: 'USD',
-              category: 'TikTok Viral',
-              product_url: productUrl,
-              image_urls: [],
-              tags: ['tiktok_viral', `search:${query}`],
+              source: 'tiktok_shop', external_id: externalId,
+              title: raw.title.slice(0, 500), price_usd: (priceUsd ?? 0).toFixed(2),
+              currency: 'USD', estimated_monthly_sales: soldCount || null,
+              category: 'TikTok Shop', product_url: raw.productUrl,
+              image_urls: raw.imageUrl ? [raw.imageUrl] : [], tags: ['tiktok_shop', 'tiktok_viral'],
               batch_id: batchId,
             });
-
             totalInserted++;
-          } catch (err) {
-            logger.error({ err, batchId }, 'Failed to insert product from TikTok search');
-          }
+          } catch { /* skip */ }
         }
+      } else {
+        logger.warn({ url, batchId }, 'No TikTok Shop products found');
+        await screenshot(page, 'shop-empty');
       }
 
       await randomDelay(5000, 10_000);
     }
 
     // ============================================================
-    // Phase 3: Capture hashtag trends as trend_signals
+    // Phase 2: Google search fallback — find TikTok Shop products via Google
     // ============================================================
 
-    logger.info({ hashtagCount: collectedHashtags.length, batchId }, 'Capturing TikTok hashtag trends');
-    const trendsCaptured = await captureHashtagTrends(page, collectedHashtags);
+    if (totalInserted < 20) {
+      logger.info({ batchId }, 'Phase 2: Google search for TikTok Shop products');
+
+      const googleQueries = [
+        'site:shop.tiktok.com trending products',
+        'site:shop.tiktok.com bestseller 2025',
+        'tiktokmademebuyit products shop buy',
+        'tiktok shop bestselling products price',
+        '"shop.tiktok.com" product buy',
+      ];
+
+      for (const query of googleQueries) {
+        const gUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=30`;
+        logger.info({ query, batchId }, 'Searching Google for TikTok products');
+
+        const status = await navigateSafely(page, gUrl);
+        if (status !== 'ok') {
+          logger.warn({ query, status }, 'Google search blocked');
+          continue;
+        }
+
+        await page.waitForTimeout(3000);
+
+        const gResults = await page.evaluate(GOOGLE_EXTRACT_SCRIPT) as any[];
+
+        if (gResults.length > 0) {
+          logger.info({ query, count: gResults.length, samples: gResults.slice(0, 3).map((r: any) => ({ title: r.title?.slice(0, 60), url: r.productUrl?.slice(0, 80), price: r.price })), batchId }, 'Google found TikTok Shop links');
+          for (const raw of gResults) {
+            try {
+              const externalId = extractProductId(raw.productUrl);
+              if (!externalId) {
+                logger.debug({ url: raw.productUrl?.slice(0, 80) }, 'Skipped: no product ID');
+                continue;
+              }
+              const priceUsd = parsePrice(raw.price);
+              await db.insert(rawProducts).values({
+                source: 'tiktok_shop', external_id: externalId,
+                title: raw.title.slice(0, 500), price_usd: (priceUsd ?? 0).toFixed(2),
+                currency: 'USD', category: 'TikTok Viral',
+                product_url: raw.productUrl, image_urls: [], tags: ['tiktok_viral', 'google_discovery'],
+                batch_id: batchId,
+              });
+              totalInserted++;
+            } catch { /* skip dupes */ }
+          }
+        } else {
+          logger.warn({ query, batchId }, 'No TikTok product links in Google results');
+        }
+
+        await randomDelay(5000, 10_000);
+        if (totalInserted >= 30) break;
+      }
+    }
+
+    // ============================================================
+    // Phase 3: Capture TikTok hashtag trends as trend_signals
+    // ============================================================
+
+    logger.info({ batchId }, 'Phase 3: Capturing TikTok hashtag trends');
+
+    const allTags = new Set([
+      ...TRENDING_HASHTAGS,
+      ...collectedHashtags.map(h => h.replace(/^#/, '').toLowerCase()).filter(h => h.length > 2),
+    ]);
+
+    let trendsCaptured = 0;
+    let consecutiveBlocks = 0;
+
+    for (const tag of allTags) {
+      // Stop trying if TikTok is consistently blocking
+      if (consecutiveBlocks >= 3) {
+        logger.warn({ batchId, consecutiveBlocks }, 'TikTok consistently blocking hashtag pages — stopping Phase 3');
+        break;
+      }
+
+      try {
+        const url = `https://www.tiktok.com/tag/${tag}`;
+        const status = await navigateSafely(page, url);
+        if (status !== 'ok') { consecutiveBlocks++; continue; }
+
+        await page.waitForTimeout(3000);
+
+        const viewText = await page.evaluate(`(() => {
+          var el = document.querySelector('[class*="StatsCount"], [data-e2e="challenge-vvcount"], [class*="view-count"], h2 + h3, [class*="stats"] strong');
+          return el ? el.textContent.trim() : '';
+        })()`) as string;
+
+        const viewCount = parseViewCount(viewText);
+        if (viewCount <= 0) continue;
+
+        // Scale to interest score
+        let interestScore: number;
+        if (viewCount >= 1_000_000_000) interestScore = 100;
+        else if (viewCount >= 100_000_000) interestScore = 80;
+        else if (viewCount >= 10_000_000) interestScore = 60;
+        else if (viewCount >= 1_000_000) interestScore = 40;
+        else if (viewCount >= 100_000) interestScore = 20;
+        else interestScore = 10;
+
+        // Calculate velocity from previous capture
+        const prevRows = await db
+          .select({ interest_score: trendSignals.interest_score, captured_at: trendSignals.captured_at })
+          .from(trendSignals)
+          .where(eq(trendSignals.keyword, `#${tag}`))
+          .orderBy(desc(trendSignals.captured_at))
+          .limit(1);
+
+        let velocity = interestScore;
+        if (prevRows.length > 0 && prevRows[0].captured_at) {
+          const hoursElapsed = (Date.now() - prevRows[0].captured_at.getTime()) / (1000 * 60 * 60);
+          if (hoursElapsed > 0.01) velocity = (interestScore - prevRows[0].interest_score) / hoursElapsed;
+        }
+
+        await db.insert(trendSignals).values({
+          keyword: `#${tag}`, source: 'tiktok', interest_score: interestScore,
+          velocity: velocity.toFixed(4),
+          related_queries: [...allTags].filter(t => t !== tag).slice(0, 10),
+          geo: 'US', captured_at: new Date(),
+        });
+
+        trendsCaptured++;
+        consecutiveBlocks = 0;
+        logger.info({ tag, views: viewCount, interestScore }, 'TikTok hashtag trend captured');
+
+        await randomDelay(3000, 6000);
+      } catch (err) {
+        logger.error({ err, tag }, 'Failed to capture hashtag trend');
+      }
+    }
+
     logger.info({ trendsCaptured, batchId }, 'Hashtag trend capture complete');
 
     await context.close();
   } catch (err) {
     logger.error({ err, batchId }, 'TikTok Shop scraper crashed');
   } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
+    if (browser) await browser.close().catch(() => {});
   }
 
   logger.info({ batchId, totalInserted }, 'TikTok Shop scraper finished');
