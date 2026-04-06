@@ -5,6 +5,7 @@ import NeuralNetwork from '@/components/NeuralNetwork';
 import AnimatedCounter from '@/components/AnimatedCounter';
 import ScoreRing from '@/components/ScoreRing';
 import ScoreDistribution from '@/components/ScoreDistribution';
+import TrendRadar from '@/components/TrendRadar';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -31,6 +32,9 @@ interface Product {
   estimated_margin_pct: string;
   fulfillment_type: string;
   trend_keywords: string[];
+  opportunity_reason: string | null;
+  product_url: string;
+  image_urls: string[];
   status: string;
 }
 
@@ -67,16 +71,16 @@ const DEMO_STATS: Stats = {
 };
 
 const DEMO_PRODUCTS: Product[] = [
-  { id: '1', score: '77.500', sales_velocity_score: '70.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Stanley Quencher H2.0 Tumbler 40oz Stainless Steel', source: 'amazon', price_usd: '35.00', estimated_margin_pct: '54.29', fulfillment_type: 'wholesale', trend_keywords: ['stanley cup'], status: 'pending' },
-  { id: '2', score: '73.250', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '100.000', competition_score: '90.000', title: 'Cloud Slides Pillow Slippers Ultra Soft Recovery', source: 'tiktok_shop', price_usd: '14.99', estimated_margin_pct: '46.66', fulfillment_type: 'dropship', trend_keywords: ['cloud slides'], status: 'pending' },
-  { id: '3', score: '73.000', sales_velocity_score: '55.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Mini Projector 1080P WiFi Bluetooth Home Theater', source: 'aliexpress', price_usd: '42.50', estimated_margin_pct: '54.12', fulfillment_type: 'wholesale', trend_keywords: ['mini projector'], status: 'pending' },
-  { id: '4', score: '70.250', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '100.000', competition_score: '90.000', title: 'Scalp Massager Shampoo Brush Silicone Head Scrubber', source: 'tiktok_shop', price_usd: '5.99', estimated_margin_pct: '26.67', fulfillment_type: 'dropship', trend_keywords: ['scalp massager'], status: 'pending' },
-  { id: '5', score: '69.750', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '86.000', competition_score: '90.000', title: 'Air Fryer 5.8QT Large Capacity Oil-Free Digital Touch', source: 'amazon', price_usd: '44.99', estimated_margin_pct: '48.89', fulfillment_type: 'wholesale', trend_keywords: ['air fryer'], status: 'pending' },
-  { id: '6', score: '65.500', sales_velocity_score: '55.000', margin_score: '40.000', trend_score: '100.000', competition_score: '70.000', title: 'LED Strip Lights 50ft RGB Color Changing with Remote', source: 'amazon', price_usd: '12.99', estimated_margin_pct: '36.52', fulfillment_type: 'dropship', trend_keywords: ['LED strip lights'], status: 'pending' },
-  { id: '7', score: '63.250', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '78.000', competition_score: '90.000', title: 'Wireless Earbuds Bluetooth 5.3 IPX7 Waterproof', source: 'amazon', price_usd: '19.99', estimated_margin_pct: '47.50', fulfillment_type: 'wholesale', trend_keywords: ['wireless earbuds'], status: 'pending' },
-  { id: '8', score: '61.000', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '72.000', competition_score: '70.000', title: 'Portable Neck Fan USB Rechargeable Bladeless 3-Speed', source: 'aliexpress', price_usd: '8.99', estimated_margin_pct: '22.22', fulfillment_type: 'dropship', trend_keywords: ['portable fan'], status: 'pending' },
-  { id: '9', score: '58.500', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '66.000', competition_score: '70.000', title: 'Smart Watch Fitness Tracker Heart Rate Blood Oxygen', source: 'amazon', price_usd: '29.99', estimated_margin_pct: '53.33', fulfillment_type: 'wholesale', trend_keywords: ['smart watch'], status: 'pending' },
-  { id: '10', score: '55.000', sales_velocity_score: '25.000', margin_score: '55.000', trend_score: '64.000', competition_score: '90.000', title: 'Pet Camera WiFi Dog Treat Dispenser 1080P Night Vision', source: 'tiktok_shop', price_usd: '32.99', estimated_margin_pct: '44.83', fulfillment_type: 'wholesale', trend_keywords: ['pet camera'], status: 'pending' },
+  { id: '1', score: '77.500', sales_velocity_score: '70.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Stanley Quencher H2.0 Tumbler 40oz Stainless Steel', source: 'amazon', price_usd: '35.00', estimated_margin_pct: '54.29', fulfillment_type: 'wholesale', trend_keywords: ['stanley cup'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '2', score: '73.250', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '100.000', competition_score: '90.000', title: 'Cloud Slides Pillow Slippers Ultra Soft Recovery', source: 'tiktok_shop', price_usd: '14.99', estimated_margin_pct: '46.66', fulfillment_type: 'dropship', trend_keywords: ['cloud slides'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '3', score: '73.000', sales_velocity_score: '55.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Mini Projector 1080P WiFi Bluetooth Home Theater', source: 'aliexpress', price_usd: '42.50', estimated_margin_pct: '54.12', fulfillment_type: 'wholesale', trend_keywords: ['mini projector'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '4', score: '70.250', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '100.000', competition_score: '90.000', title: 'Scalp Massager Shampoo Brush Silicone Head Scrubber', source: 'tiktok_shop', price_usd: '5.99', estimated_margin_pct: '26.67', fulfillment_type: 'dropship', trend_keywords: ['scalp massager'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '5', score: '69.750', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '86.000', competition_score: '90.000', title: 'Air Fryer 5.8QT Large Capacity Oil-Free Digital Touch', source: 'amazon', price_usd: '44.99', estimated_margin_pct: '48.89', fulfillment_type: 'wholesale', trend_keywords: ['air fryer'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '6', score: '65.500', sales_velocity_score: '55.000', margin_score: '40.000', trend_score: '100.000', competition_score: '70.000', title: 'LED Strip Lights 50ft RGB Color Changing with Remote', source: 'amazon', price_usd: '12.99', estimated_margin_pct: '36.52', fulfillment_type: 'dropship', trend_keywords: ['LED strip lights'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '7', score: '63.250', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '78.000', competition_score: '90.000', title: 'Wireless Earbuds Bluetooth 5.3 IPX7 Waterproof', source: 'amazon', price_usd: '19.99', estimated_margin_pct: '47.50', fulfillment_type: 'wholesale', trend_keywords: ['wireless earbuds'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '8', score: '61.000', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '72.000', competition_score: '70.000', title: 'Portable Neck Fan USB Rechargeable Bladeless 3-Speed', source: 'aliexpress', price_usd: '8.99', estimated_margin_pct: '22.22', fulfillment_type: 'dropship', trend_keywords: ['portable fan'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '9', score: '58.500', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '66.000', competition_score: '70.000', title: 'Smart Watch Fitness Tracker Heart Rate Blood Oxygen', source: 'amazon', price_usd: '29.99', estimated_margin_pct: '53.33', fulfillment_type: 'wholesale', trend_keywords: ['smart watch'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '10', score: '55.000', sales_velocity_score: '25.000', margin_score: '55.000', trend_score: '64.000', competition_score: '90.000', title: 'Pet Camera WiFi Dog Treat Dispenser 1080P Night Vision', source: 'tiktok_shop', price_usd: '32.99', estimated_margin_pct: '44.83', fulfillment_type: 'wholesale', trend_keywords: ['pet camera'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
 ];
 
 const DEMO_TRENDS: Trend[] = [
@@ -334,18 +338,47 @@ export default function LandingPage() {
                     </div>
                   </div>
 
-                  {/* Title */}
-                  <h3 className="text-xs font-medium text-zinc-300 leading-snug mb-3 line-clamp-2 flex-1">
-                    {p.title}
-                  </h3>
-
-                  {/* Score ring */}
-                  <div className="flex justify-center mb-3">
-                    <ScoreRing score={score} size={64} strokeWidth={5} />
+                  {/* Title + thumbnail */}
+                  <div className="flex gap-2 mb-2">
+                    {p.image_urls && p.image_urls.length > 0 && (
+                      <img
+                        src={p.image_urls[0]}
+                        alt=""
+                        className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-zinc-800"
+                        loading="lazy"
+                      />
+                    )}
+                    <h3 className="text-xs font-medium text-zinc-300 leading-snug line-clamp-2 flex-1">
+                      {p.title}
+                    </h3>
                   </div>
 
+                  {/* Source link */}
+                  {p.product_url && (
+                    <a
+                      href={p.product_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-emerald-500/70 hover:text-emerald-400 hover:underline font-mono mb-2 block truncate"
+                    >
+                      View source &#x2197;
+                    </a>
+                  )}
+
+                  {/* Score ring */}
+                  <div className="flex justify-center mb-2">
+                    <ScoreRing score={score} size={56} strokeWidth={4} />
+                  </div>
+
+                  {/* Opportunity reason */}
+                  {p.opportunity_reason && (
+                    <p className="text-[10px] text-zinc-500 leading-relaxed mb-2 line-clamp-3 italic">
+                      {p.opportunity_reason}
+                    </p>
+                  )}
+
                   {/* Data row */}
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 mb-3 font-mono text-[10px]">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 mb-2 font-mono text-[10px]">
                     <div className="text-zinc-500">Price</div>
                     <div className="text-right text-zinc-300">${parseFloat(p.price_usd).toFixed(2)}</div>
                     <div className="text-zinc-500">Margin</div>
@@ -354,7 +387,7 @@ export default function LandingPage() {
 
                   {/* Trend keywords */}
                   {p.trend_keywords && p.trend_keywords.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-3">
+                    <div className="flex flex-wrap gap-1 mb-2">
                       {p.trend_keywords.slice(0, 2).map((kw) => (
                         <span key={kw} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
                           {kw}
@@ -388,124 +421,15 @@ export default function LandingPage() {
       </section>
 
       {/* ============================================================ */}
-      {/* SECTION 3 — Trend Radar                                       */}
+      {/* SECTION 3 — Neural Trend Radar                                */}
       {/* ============================================================ */}
       <section className="relative z-10 px-6 py-20 max-w-7xl mx-auto">
-        <SectionTitle>Trend radar</SectionTitle>
+        <SectionTitle live>Trend radar</SectionTitle>
 
         {loading ? (
-          <div className="flex gap-4 overflow-hidden">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex-shrink-0 w-48 h-32 skeleton rounded-xl" />
-            ))}
-          </div>
+          <div className="skeleton h-[400px] rounded-2xl" />
         ) : (
-          <>
-            {/* Bubble visualization */}
-            <div className="relative h-64 mb-8 overflow-hidden rounded-2xl bg-[#0d0d0d] border border-zinc-800/30">
-              {/* Radar circles */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                {[0.3, 0.5, 0.7, 0.9].map((scale) => (
-                  <div
-                    key={scale}
-                    className="absolute rounded-full border border-emerald-500/5"
-                    style={{ width: `${scale * 100}%`, height: `${scale * 100}%` }}
-                  />
-                ))}
-                {/* Sweep line */}
-                <div className="radar-sweep absolute w-1/2 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-emerald-500/5 origin-left" />
-              </div>
-
-              {/* Bubbles */}
-              <div className="absolute inset-0">
-                {trends.slice(0, 15).map((t, i) => {
-                  const size = Math.max(28, (t.interest_score / 100) * 90);
-                  const vel = parseFloat(t.velocity ?? '0');
-                  // Distribute in a cloud
-                  const angle = (i / trends.length) * Math.PI * 2 + 0.5;
-                  const dist = 0.15 + (1 - t.interest_score / 100) * 0.3;
-                  const left = 50 + Math.cos(angle) * dist * 80;
-                  const top = 50 + Math.sin(angle) * dist * 80;
-
-                  return (
-                    <div
-                      key={t.id}
-                      className="absolute transform -translate-x-1/2 -translate-y-1/2 group cursor-default animate-fade-in-up"
-                      style={{
-                        left: `${left}%`,
-                        top: `${top}%`,
-                        animationDelay: `${i * 0.08}s`,
-                      }}
-                    >
-                      <div
-                        className="rounded-full flex items-center justify-center transition-transform hover:scale-110"
-                        style={{
-                          width: size,
-                          height: size,
-                          background: `radial-gradient(circle, ${vel > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'}, transparent)`,
-                          border: `1px solid ${vel > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.25)'}`,
-                          boxShadow: `0 0 ${size / 3}px ${vel > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.1)'}`,
-                        }}
-                      >
-                        <span className="font-mono text-[9px] text-center leading-tight text-zinc-300 px-1 truncate max-w-full">
-                          {t.keyword.length > 12 ? t.keyword.slice(0, 12) + '...' : t.keyword}
-                        </span>
-                      </div>
-
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                        <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 whitespace-nowrap shadow-xl">
-                          <p className="text-xs font-medium text-white">{t.keyword}</p>
-                          <div className="flex gap-3 mt-1 font-mono text-[10px]">
-                            <span className="text-cyan-400">{t.interest_score}/100</span>
-                            <span className={vel > 0 ? 'text-emerald-400' : 'text-red-400'}>
-                              {vel > 0 ? '↑' : '↓'}{Math.abs(vel).toFixed(1)}/h
-                            </span>
-                            {sourceBadge(t.source)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Scrolling cards */}
-            <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
-              {trends.map((t, i) => {
-                const vel = parseFloat(t.velocity ?? '0');
-                return (
-                  <div
-                    key={t.id}
-                    className="card-glow flex-shrink-0 w-52 bg-[#111] rounded-xl p-4 border border-zinc-800/50 animate-fade-in-up"
-                    style={{ animationDelay: `${i * 0.05}s` }}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="text-xs font-medium text-zinc-200 leading-snug line-clamp-2 flex-1 mr-2">
-                        {t.keyword}
-                      </h4>
-                      <span
-                        className={`font-mono text-lg font-bold ${
-                          t.interest_score >= 80 ? 'text-emerald-400' :
-                          t.interest_score >= 50 ? 'text-amber-400' :
-                          'text-zinc-500'
-                        }`}
-                      >
-                        {t.interest_score}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 font-mono text-[10px]">
-                      <span className={vel > 0 ? 'text-emerald-400' : vel < 0 ? 'text-red-400' : 'text-zinc-500'}>
-                        {vel > 0 ? '▲' : vel < 0 ? '▼' : '–'} {Math.abs(vel).toFixed(1)}/h
-                      </span>
-                      {sourceBadge(t.source)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
+          <TrendRadar trends={trends} />
         )}
       </section>
 
