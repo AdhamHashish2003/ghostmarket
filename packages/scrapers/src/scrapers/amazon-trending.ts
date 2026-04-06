@@ -33,23 +33,30 @@ interface AmazonTarget {
   type: 'bestsellers' | 'movers' | 'new-releases';
 }
 
+// Niche categories where generic/unbranded sellers thrive (NOT big-brand-dominated)
 const BESTSELLER_CATEGORIES: AmazonTarget[] = [
-  { slug: 'overall',     name: 'Overall Best Sellers',  url: `${BASE_URL}/gp/bestsellers/`,              type: 'bestsellers' },
-  { slug: 'electronics', name: 'Electronics',           url: `${BASE_URL}/gp/bestsellers/electronics/`,  type: 'bestsellers' },
-  { slug: 'home',        name: 'Home & Kitchen',        url: `${BASE_URL}/gp/bestsellers/home-garden/`,  type: 'bestsellers' },
-  { slug: 'sports',      name: 'Sports & Outdoors',     url: `${BASE_URL}/gp/bestsellers/sporting-goods/`, type: 'bestsellers' },
-  { slug: 'toys',        name: 'Toys & Games',          url: `${BASE_URL}/gp/bestsellers/toys-and-games/`, type: 'bestsellers' },
-  { slug: 'beauty',      name: 'Beauty & Personal Care', url: `${BASE_URL}/gp/bestsellers/beauty/`,       type: 'bestsellers' },
-  { slug: 'fashion',     name: 'Fashion',               url: `${BASE_URL}/gp/bestsellers/fashion/`,      type: 'bestsellers' },
+  { slug: 'kitchen',     name: 'Kitchen & Dining',      url: `${BASE_URL}/gp/bestsellers/kitchen/`,            type: 'bestsellers' },
+  { slug: 'home',        name: 'Home & Kitchen',        url: `${BASE_URL}/gp/bestsellers/home-garden/`,        type: 'bestsellers' },
+  { slug: 'office',      name: 'Office Products',       url: `${BASE_URL}/gp/bestsellers/office-products/`,    type: 'bestsellers' },
+  { slug: 'pets',        name: 'Pet Supplies',          url: `${BASE_URL}/gp/bestsellers/pet-supplies/`,       type: 'bestsellers' },
+  { slug: 'garden',      name: 'Patio & Garden',        url: `${BASE_URL}/gp/bestsellers/patio-lawn-garden/`,  type: 'bestsellers' },
+  { slug: 'crafts',      name: 'Arts & Crafts',         url: `${BASE_URL}/gp/bestsellers/arts-crafts-sewing/`, type: 'bestsellers' },
+  { slug: 'baby',        name: 'Baby Products',         url: `${BASE_URL}/gp/bestsellers/baby-products/`,      type: 'bestsellers' },
+  { slug: 'automotive',  name: 'Automotive',            url: `${BASE_URL}/gp/bestsellers/automotive/`,         type: 'bestsellers' },
+  { slug: 'industrial',  name: 'Industrial & Tools',    url: `${BASE_URL}/gp/bestsellers/industrial/`,         type: 'bestsellers' },
+  { slug: 'beauty',      name: 'Beauty & Personal Care', url: `${BASE_URL}/gp/bestsellers/beauty/`,            type: 'bestsellers' },
+  { slug: 'sports',      name: 'Sports & Outdoors',     url: `${BASE_URL}/gp/bestsellers/sporting-goods/`,     type: 'bestsellers' },
 ];
 
+// Movers & Shakers = fastest RISING products (more valuable than established bestsellers)
 const MOVERS_TARGETS: AmazonTarget[] = [
-  { slug: 'movers',       name: 'Movers & Shakers',     url: `${BASE_URL}/gp/moversandshakers/`,         type: 'movers' },
+  { slug: 'movers-kitchen', name: 'Rising: Kitchen',       url: `${BASE_URL}/gp/moversandshakers/kitchen/`,          type: 'movers' },
+  { slug: 'movers-home',    name: 'Rising: Home & Garden', url: `${BASE_URL}/gp/moversandshakers/home-garden/`,      type: 'movers' },
+  { slug: 'movers-sports',  name: 'Rising: Sports',        url: `${BASE_URL}/gp/moversandshakers/sporting-goods/`,   type: 'movers' },
+  { slug: 'movers-pets',    name: 'Rising: Pet Supplies',  url: `${BASE_URL}/gp/moversandshakers/pet-supplies/`,     type: 'movers' },
 ];
 
-const NEW_RELEASES_TARGETS: AmazonTarget[] = [
-  { slug: 'new-releases', name: 'New Releases',         url: `${BASE_URL}/gp/new-releases/`,             type: 'new-releases' },
-];
+const NEW_RELEASES_TARGETS: AmazonTarget[] = [];
 
 // --- Helpers ---
 

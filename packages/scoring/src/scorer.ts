@@ -1,5 +1,7 @@
 import { eq, and, desc, gte, ilike, sql } from 'drizzle-orm';
 import { db, rawProducts, trendSignals, logger } from '@ghostmarket/shared';
+import { filterProduct } from './brand-filter.js';
+import { analyzeTrend } from './trend-analyzer.js';
 
 // --- Stopwords for trend matching ---
 
@@ -53,6 +55,7 @@ export interface ScoredProductInsert {
   fulfillment_type: 'pod' | 'dropship' | 'wholesale' | 'digital' | 'unknown';
   estimated_margin_pct: string;
   trend_keywords: string[];
+  opportunity_reason: string;
   status: 'pending';
 }
 
@@ -242,7 +245,21 @@ function detectFulfillmentType(product: RawProductRow): 'pod' | 'dropship' | 'wh
 
 // --- Main scoring function ---
 
-export async function scoreProduct(product: RawProductRow): Promise<ScoredProductInsert> {
+export async function scoreProduct(product: RawProductRow): Promise<ScoredProductInsert | null> {
+  // Brand filter — reject products small sellers can't compete on
+  const filterResult = filterProduct({
+    title: product.title,
+    price_usd: product.price_usd,
+    category: product.category,
+    review_count: product.review_count,
+    tags: product.tags,
+  });
+
+  if (!filterResult.allowed) {
+    logger.info({ title: product.title.slice(0, 60), reason: filterResult.reason }, 'Filtered out');
+    return null;
+  }
+
   const [salesVelocity, { score: marginScore, marginPct }, { score: trendScore, trendKeywords }, competitionScore] =
     await Promise.all([
       computeSalesVelocityScore(product),
@@ -251,16 +268,38 @@ export async function scoreProduct(product: RawProductRow): Promise<ScoredProduc
       computeCompetitionScore(product),
     ]);
 
+  // New weights: trend-first, margin-critical, opportunity bonus matters
+  const opportunityBonus = filterResult.opportunityBonus;
+  const normalizedBonus = Math.min(100, opportunityBonus * 2); // Scale 0-55 → 0-100+
+
   const finalScore =
-    salesVelocity * 0.30 +
+    salesVelocity * 0.20 +
     marginScore * 0.25 +
-    trendScore * 0.25 +
-    competitionScore * 0.20;
+    trendScore * 0.30 +
+    competitionScore * 0.15 +
+    normalizedBonus * 0.10;
 
   const fulfillmentType = detectFulfillmentType(product);
 
-  return {
-    raw_product_id: product.id,
+  // Get matched trend details for the analyzer
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const matchedTrends: { keyword: string; interest_score: number; velocity: string }[] = [];
+  for (const kw of trendKeywords.slice(0, 3)) {
+    const rows = await db
+      .select({ keyword: trendSignals.keyword, interest_score: trendSignals.interest_score, velocity: trendSignals.velocity })
+      .from(trendSignals)
+      .where(and(eq(trendSignals.keyword, kw), gte(trendSignals.captured_at, sevenDaysAgo)))
+      .orderBy(desc(trendSignals.interest_score))
+      .limit(1);
+    if (rows.length > 0) matchedTrends.push({ keyword: rows[0].keyword, interest_score: rows[0].interest_score, velocity: rows[0].velocity ?? '0' });
+  }
+
+  // Trend-adjacent bonus
+  if (matchedTrends.length > 0) {
+    // Already accounted for in trend_score, but add explicit bonus via filter
+  }
+
+  const scoreData = {
     score: finalScore.toFixed(3),
     sales_velocity_score: salesVelocity.toFixed(3),
     margin_score: marginScore.toFixed(3),
@@ -269,6 +308,19 @@ export async function scoreProduct(product: RawProductRow): Promise<ScoredProduc
     fulfillment_type: fulfillmentType,
     estimated_margin_pct: marginPct.toFixed(2),
     trend_keywords: trendKeywords,
+  };
+
+  // Generate opportunity reasoning
+  const opportunityReason = await analyzeTrend(
+    { title: product.title, price_usd: product.price_usd, estimated_monthly_sales: product.estimated_monthly_sales, source: product.source, category: product.category, review_count: product.review_count },
+    matchedTrends,
+    scoreData,
+  );
+
+  return {
+    ...scoreData,
+    raw_product_id: product.id,
+    opportunity_reason: opportunityReason,
     status: 'pending',
   };
 }

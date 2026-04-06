@@ -35,18 +35,23 @@ async function main() {
 
     if (products.length === 0) continue;
 
-    // Step 3: Score each product
+    // Step 3: Score each product (brand filter applied inside scoreProduct)
     const scoredInserts = [];
+    let filtered = 0;
     for (const product of products) {
       try {
         const scored = await scoreProduct(product);
+        if (scored === null) {
+          filtered++;
+          continue;
+        }
         scoredInserts.push(scored);
       } catch (err) {
         console.error(`  Failed to score: ${product.title.slice(0, 50)}`, err);
       }
     }
 
-    console.log(`  Scored: ${scoredInserts.length} products`);
+    console.log(`  Scored: ${scoredInserts.length} products (filtered out: ${filtered})`);
 
     // Step 4: Rank and store
     const stored = await rankAndStore(batch_id, scoredInserts);

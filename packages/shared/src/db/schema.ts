@@ -81,6 +81,7 @@ export const scoredProducts = pgTable(
     fulfillment_type: text('fulfillment_type').default('unknown'),
     estimated_margin_pct: numeric('estimated_margin_pct', { precision: 5, scale: 2 }),
     trend_keywords: jsonb('trend_keywords').default([]),
+    opportunity_reason: text('opportunity_reason'),
     scored_at: timestamp('scored_at').defaultNow(),
     status: text('status').default('pending'),
   },

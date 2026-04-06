@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
           fulfillment_type: scoredProducts.fulfillment_type,
           estimated_margin_pct: scoredProducts.estimated_margin_pct,
           trend_keywords: scoredProducts.trend_keywords,
+          opportunity_reason: scoredProducts.opportunity_reason,
           scored_at: scoredProducts.scored_at,
           status: scoredProducts.status,
           title: rawProducts.title,

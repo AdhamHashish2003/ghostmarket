@@ -6,7 +6,7 @@ console.log(`\nStarting AliExpress scraper test (batch: ${batchId})\n`);
 
 const result = await scrapeAliexpress(batchId, {
   max_pages: 1,
-  categories: ['electronics', 'home'],
+  categories: ['kitchen-gadget', 'desk-organizer', 'pet-grooming'],
 });
 
 console.log(`\nDone! Products found: ${result.productsFound}`);

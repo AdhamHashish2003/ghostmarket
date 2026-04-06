@@ -33,6 +33,7 @@ export async function rankAndStore(
           fulfillment_type: item.fulfillment_type,
           estimated_margin_pct: item.estimated_margin_pct,
           trend_keywords: item.trend_keywords,
+          opportunity_reason: item.opportunity_reason,
           scored_at: new Date(),
           status: 'pending',
         })
@@ -47,6 +48,7 @@ export async function rankAndStore(
             fulfillment_type: item.fulfillment_type,
             estimated_margin_pct: item.estimated_margin_pct,
             trend_keywords: item.trend_keywords,
+            opportunity_reason: item.opportunity_reason,
             scored_at: new Date(),
           },
         });
