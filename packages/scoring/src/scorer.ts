@@ -2,6 +2,7 @@ import { eq, and, desc, gte, ilike, sql } from 'drizzle-orm';
 import { db, rawProducts, trendSignals, logger } from '@ghostmarket/shared';
 import { filterProduct } from './brand-filter.js';
 import { analyzeTrend } from './trend-analyzer.js';
+import { analyzeFulfillment } from './fulfillment-analyzer.js';
 
 // --- Stopwords for trend matching ---
 
@@ -87,10 +88,14 @@ export interface ScoredProductInsert {
   margin_score: string;
   trend_score: string;
   competition_score: string;
-  fulfillment_type: 'pod' | 'dropship' | 'wholesale' | 'digital' | 'unknown';
+  fulfillment_type: 'pod' | 'dropship' | 'wholesale' | 'digital' | 'skip' | 'unknown';
   estimated_margin_pct: string;
   trend_keywords: string[];
   opportunity_reason: string;
+  fulfillment_strategy: string;
+  supplier_action: string;
+  estimated_startup_cost: string;
+  risk_level: string;
   status: 'pending';
 }
 
@@ -333,7 +338,19 @@ export async function scoreProduct(product: RawProductRow): Promise<ScoredProduc
     competitionScore * 0.15 +
     normalizedBonus * 0.10;
 
-  const fulfillmentType = detectFulfillmentType(product);
+  // Fulfillment analysis (intelligent, not just price-based)
+  const fulfillmentAnalysis = analyzeFulfillment(
+    { title: product.title, price_usd: product.price_usd, source: product.source, category: product.category, estimated_monthly_sales: product.estimated_monthly_sales, review_count: product.review_count },
+    finalScore,
+  );
+
+  // If fulfillment says skip, filter it out
+  if (fulfillmentAnalysis.fulfillment_type === 'skip') {
+    logger.info({ title: product.title.slice(0, 60), reason: fulfillmentAnalysis.reasoning }, 'Skipped by fulfillment');
+    return null;
+  }
+
+  const fulfillmentType = fulfillmentAnalysis.fulfillment_type;
 
   // Get matched trend details for the analyzer
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -375,6 +392,10 @@ export async function scoreProduct(product: RawProductRow): Promise<ScoredProduc
     ...scoreData,
     raw_product_id: product.id,
     opportunity_reason: opportunityReason,
+    fulfillment_strategy: fulfillmentAnalysis.strategy,
+    supplier_action: fulfillmentAnalysis.supplier_action,
+    estimated_startup_cost: fulfillmentAnalysis.estimated_startup_cost.toFixed(2),
+    risk_level: fulfillmentAnalysis.risk_level,
     status: 'pending',
   };
 }

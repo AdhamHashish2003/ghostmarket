@@ -11,10 +11,10 @@ export async function rankAndStore(
     return 0;
   }
 
-  // Sort by score descending, take top 50
+  // Sort by score descending, take top 30 (curated, less noise)
   const ranked = [...scoredInserts]
     .sort((a, b) => parseFloat(b.score) - parseFloat(a.score))
-    .slice(0, 50);
+    .slice(0, 30);
 
   let stored = 0;
 
@@ -34,6 +34,10 @@ export async function rankAndStore(
           estimated_margin_pct: item.estimated_margin_pct,
           trend_keywords: item.trend_keywords,
           opportunity_reason: item.opportunity_reason,
+          fulfillment_strategy: item.fulfillment_strategy,
+          supplier_action: item.supplier_action,
+          estimated_startup_cost: item.estimated_startup_cost,
+          risk_level: item.risk_level,
           scored_at: new Date(),
           status: 'pending',
         })
@@ -49,6 +53,10 @@ export async function rankAndStore(
             estimated_margin_pct: item.estimated_margin_pct,
             trend_keywords: item.trend_keywords,
             opportunity_reason: item.opportunity_reason,
+            fulfillment_strategy: item.fulfillment_strategy,
+            supplier_action: item.supplier_action,
+            estimated_startup_cost: item.estimated_startup_cost,
+            risk_level: item.risk_level,
             scored_at: new Date(),
           },
         });

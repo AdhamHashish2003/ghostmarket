@@ -33,6 +33,10 @@ interface Product {
   fulfillment_type: string;
   trend_keywords: string[];
   opportunity_reason: string | null;
+  fulfillment_strategy: string | null;
+  supplier_action: string | null;
+  estimated_startup_cost: string | null;
+  risk_level: string | null;
   product_url: string;
   image_urls: string[];
   status: string;
@@ -71,16 +75,16 @@ const DEMO_STATS: Stats = {
 };
 
 const DEMO_PRODUCTS: Product[] = [
-  { id: '1', score: '77.500', sales_velocity_score: '70.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Stanley Quencher H2.0 Tumbler 40oz Stainless Steel', source: 'amazon', price_usd: '35.00', estimated_margin_pct: '54.29', fulfillment_type: 'wholesale', trend_keywords: ['stanley cup'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '2', score: '73.250', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '100.000', competition_score: '90.000', title: 'Cloud Slides Pillow Slippers Ultra Soft Recovery', source: 'tiktok_shop', price_usd: '14.99', estimated_margin_pct: '46.66', fulfillment_type: 'dropship', trend_keywords: ['cloud slides'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '3', score: '73.000', sales_velocity_score: '55.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Mini Projector 1080P WiFi Bluetooth Home Theater', source: 'aliexpress', price_usd: '42.50', estimated_margin_pct: '54.12', fulfillment_type: 'wholesale', trend_keywords: ['mini projector'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '4', score: '70.250', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '100.000', competition_score: '90.000', title: 'Scalp Massager Shampoo Brush Silicone Head Scrubber', source: 'tiktok_shop', price_usd: '5.99', estimated_margin_pct: '26.67', fulfillment_type: 'dropship', trend_keywords: ['scalp massager'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '5', score: '69.750', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '86.000', competition_score: '90.000', title: 'Air Fryer 5.8QT Large Capacity Oil-Free Digital Touch', source: 'amazon', price_usd: '44.99', estimated_margin_pct: '48.89', fulfillment_type: 'wholesale', trend_keywords: ['air fryer'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '6', score: '65.500', sales_velocity_score: '55.000', margin_score: '40.000', trend_score: '100.000', competition_score: '70.000', title: 'LED Strip Lights 50ft RGB Color Changing with Remote', source: 'amazon', price_usd: '12.99', estimated_margin_pct: '36.52', fulfillment_type: 'dropship', trend_keywords: ['LED strip lights'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '7', score: '63.250', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '78.000', competition_score: '90.000', title: 'Wireless Earbuds Bluetooth 5.3 IPX7 Waterproof', source: 'amazon', price_usd: '19.99', estimated_margin_pct: '47.50', fulfillment_type: 'wholesale', trend_keywords: ['wireless earbuds'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '8', score: '61.000', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '72.000', competition_score: '70.000', title: 'Portable Neck Fan USB Rechargeable Bladeless 3-Speed', source: 'aliexpress', price_usd: '8.99', estimated_margin_pct: '22.22', fulfillment_type: 'dropship', trend_keywords: ['portable fan'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '9', score: '58.500', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '66.000', competition_score: '70.000', title: 'Smart Watch Fitness Tracker Heart Rate Blood Oxygen', source: 'amazon', price_usd: '29.99', estimated_margin_pct: '53.33', fulfillment_type: 'wholesale', trend_keywords: ['smart watch'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
-  { id: '10', score: '55.000', sales_velocity_score: '25.000', margin_score: '55.000', trend_score: '64.000', competition_score: '90.000', title: 'Pet Camera WiFi Dog Treat Dispenser 1080P Night Vision', source: 'tiktok_shop', price_usd: '32.99', estimated_margin_pct: '44.83', fulfillment_type: 'wholesale', trend_keywords: ['pet camera'], status: 'pending', opportunity_reason: null, product_url: '', image_urls: [] },
+  { id: '1', score: '77.500', sales_velocity_score: '70.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Stanley Quencher H2.0 Tumbler 40oz Stainless Steel', source: 'amazon', price_usd: '35.00', estimated_margin_pct: '54.29', fulfillment_type: 'wholesale', trend_keywords: ['stanley cup'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '2', score: '73.250', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '100.000', competition_score: '90.000', title: 'Cloud Slides Pillow Slippers Ultra Soft Recovery', source: 'tiktok_shop', price_usd: '14.99', estimated_margin_pct: '46.66', fulfillment_type: 'dropship', trend_keywords: ['cloud slides'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '3', score: '73.000', sales_velocity_score: '55.000', margin_score: '70.000', trend_score: '100.000', competition_score: '70.000', title: 'Mini Projector 1080P WiFi Bluetooth Home Theater', source: 'aliexpress', price_usd: '42.50', estimated_margin_pct: '54.12', fulfillment_type: 'wholesale', trend_keywords: ['mini projector'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '4', score: '70.250', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '100.000', competition_score: '90.000', title: 'Scalp Massager Shampoo Brush Silicone Head Scrubber', source: 'tiktok_shop', price_usd: '5.99', estimated_margin_pct: '26.67', fulfillment_type: 'dropship', trend_keywords: ['scalp massager'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '5', score: '69.750', sales_velocity_score: '55.000', margin_score: '55.000', trend_score: '86.000', competition_score: '90.000', title: 'Air Fryer 5.8QT Large Capacity Oil-Free Digital Touch', source: 'amazon', price_usd: '44.99', estimated_margin_pct: '48.89', fulfillment_type: 'wholesale', trend_keywords: ['air fryer'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '6', score: '65.500', sales_velocity_score: '55.000', margin_score: '40.000', trend_score: '100.000', competition_score: '70.000', title: 'LED Strip Lights 50ft RGB Color Changing with Remote', source: 'amazon', price_usd: '12.99', estimated_margin_pct: '36.52', fulfillment_type: 'dropship', trend_keywords: ['LED strip lights'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '7', score: '63.250', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '78.000', competition_score: '90.000', title: 'Wireless Earbuds Bluetooth 5.3 IPX7 Waterproof', source: 'amazon', price_usd: '19.99', estimated_margin_pct: '47.50', fulfillment_type: 'wholesale', trend_keywords: ['wireless earbuds'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '8', score: '61.000', sales_velocity_score: '70.000', margin_score: '25.000', trend_score: '72.000', competition_score: '70.000', title: 'Portable Neck Fan USB Rechargeable Bladeless 3-Speed', source: 'aliexpress', price_usd: '8.99', estimated_margin_pct: '22.22', fulfillment_type: 'dropship', trend_keywords: ['portable fan'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '9', score: '58.500', sales_velocity_score: '40.000', margin_score: '55.000', trend_score: '66.000', competition_score: '70.000', title: 'Smart Watch Fitness Tracker Heart Rate Blood Oxygen', source: 'amazon', price_usd: '29.99', estimated_margin_pct: '53.33', fulfillment_type: 'wholesale', trend_keywords: ['smart watch'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
+  { id: '10', score: '55.000', sales_velocity_score: '25.000', margin_score: '55.000', trend_score: '64.000', competition_score: '90.000', title: 'Pet Camera WiFi Dog Treat Dispenser 1080P Night Vision', source: 'tiktok_shop', price_usd: '32.99', estimated_margin_pct: '44.83', fulfillment_type: 'wholesale', trend_keywords: ['pet camera'], status: 'pending', opportunity_reason: null, fulfillment_strategy: null, supplier_action: null, estimated_startup_cost: null, risk_level: null, product_url: '', image_urls: [] },
 ];
 
 const DEMO_TRENDS: Trend[] = [
@@ -383,7 +387,28 @@ export default function LandingPage() {
                     <div className="text-right text-zinc-300">${parseFloat(p.price_usd).toFixed(2)}</div>
                     <div className="text-zinc-500">Margin</div>
                     <div className="text-right text-emerald-400">{parseFloat(p.estimated_margin_pct).toFixed(0)}%</div>
+                    {p.estimated_startup_cost && (
+                      <>
+                        <div className="text-zinc-500">Startup</div>
+                        <div className="text-right text-zinc-300">${parseFloat(p.estimated_startup_cost).toFixed(0)}</div>
+                      </>
+                    )}
+                    {p.risk_level && (
+                      <>
+                        <div className="text-zinc-500">Risk</div>
+                        <div className={`text-right ${p.risk_level === 'low' ? 'text-emerald-400' : p.risk_level === 'medium' ? 'text-amber-400' : 'text-red-400'}`}>
+                          {p.risk_level}
+                        </div>
+                      </>
+                    )}
                   </div>
+
+                  {/* Strategy line */}
+                  {p.fulfillment_strategy && (
+                    <p className="text-[9px] text-cyan-500/60 font-mono mb-2 line-clamp-2">
+                      {p.fulfillment_strategy}
+                    </p>
+                  )}
 
                   {/* Trend keywords */}
                   {p.trend_keywords && p.trend_keywords.length > 0 && (

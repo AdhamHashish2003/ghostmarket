@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@ghostmarket/shared';
 
-const SCRAPER_FLEET_URL = process.env.SCRAPER_FLEET_URL ?? 'http://localhost:3007';
+const SCRAPER_FLEET_URL = process.env.SCRAPER_FLEET_URL
+  ?? 'https://scrapers-production-e383.up.railway.app';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,24 +18,35 @@ export async function POST(request: NextRequest) {
     // Strip "scrape:" prefix if present for the API call
     const shortName = scraper_name.replace('scrape:', '');
 
-    const res = await fetch(`${SCRAPER_FLEET_URL}/api/trigger/${shortName}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config: config ?? {} }),
-    });
+    let data: Record<string, unknown>;
+    try {
+      const res = await fetch(`${SCRAPER_FLEET_URL}/api/trigger/${shortName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: config ?? {} }),
+        signal: AbortSignal.timeout(15000),
+      });
 
-    const data = await res.json();
+      data = await res.json();
 
-    if (!res.ok) {
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: data.error ?? 'Trigger failed', status: res.status },
+          { status: res.status },
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, scraperName: scraper_name }, 'Scraper fleet unreachable');
       return NextResponse.json(
-        { error: data.error ?? 'Trigger failed' },
-        { status: res.status },
+        { error: 'Scraper fleet unreachable. Check Railway deployment.', details: msg },
+        { status: 503 },
       );
     }
 
     return NextResponse.json({
       success: true,
-      job_id: data.batchId,
+      job_id: data.batchId ?? data.jobId,
       scraper_name,
     });
   } catch (err) {

@@ -54,9 +54,16 @@ const MOVERS_TARGETS: AmazonTarget[] = [
   { slug: 'movers-home',    name: 'Rising: Home & Garden', url: `${BASE_URL}/gp/moversandshakers/home-garden/`,      type: 'movers' },
   { slug: 'movers-sports',  name: 'Rising: Sports',        url: `${BASE_URL}/gp/moversandshakers/sporting-goods/`,   type: 'movers' },
   { slug: 'movers-pets',    name: 'Rising: Pet Supplies',  url: `${BASE_URL}/gp/moversandshakers/pet-supplies/`,     type: 'movers' },
+  { slug: 'movers-office',  name: 'Rising: Office',        url: `${BASE_URL}/gp/moversandshakers/office-products/`,  type: 'movers' },
+  { slug: 'movers-crafts',  name: 'Rising: Arts & Crafts', url: `${BASE_URL}/gp/moversandshakers/arts-crafts-sewing/`, type: 'movers' },
 ];
 
-const NEW_RELEASES_TARGETS: AmazonTarget[] = [];
+// New Releases = early mover advantage
+const NEW_RELEASES_TARGETS: AmazonTarget[] = [
+  { slug: 'new-kitchen',  name: 'New: Kitchen',     url: `${BASE_URL}/gp/new-releases/kitchen/`,       type: 'new-releases' },
+  { slug: 'new-home',     name: 'New: Home',        url: `${BASE_URL}/gp/new-releases/home-garden/`,   type: 'new-releases' },
+  { slug: 'new-pets',     name: 'New: Pet Supplies', url: `${BASE_URL}/gp/new-releases/pet-supplies/`, type: 'new-releases' },
+];
 
 // --- Helpers ---
 

@@ -28,15 +28,23 @@ interface CategoryTarget {
 // Niche product searches that small e-commerce sellers actually profit from
 const TARGETS: CategoryTarget[] = [
   { slug: 'kitchen-gadget',    name: 'Kitchen Gadgets',     url: 'https://www.aliexpress.us/w/wholesale-kitchen-gadget-2025.html?sortType=total_tranpro_desc' },
+  { slug: 'silicone-kitchen',  name: 'Silicone Kitchen',    url: 'https://www.aliexpress.us/w/wholesale-silicone-kitchen.html?sortType=total_tranpro_desc' },
   { slug: 'car-mount',         name: 'Car Accessories',     url: 'https://www.aliexpress.us/w/wholesale-car-phone-mount.html?sortType=total_tranpro_desc' },
+  { slug: 'car-interior',      name: 'Car Interior',        url: 'https://www.aliexpress.us/w/wholesale-car-interior-accessories.html?sortType=total_tranpro_desc' },
   { slug: 'desk-organizer',    name: 'Desk Organizers',     url: 'https://www.aliexpress.us/w/wholesale-desk-organizer.html?sortType=total_tranpro_desc' },
-  { slug: 'portable-fan',      name: 'Portable Fans',       url: 'https://www.aliexpress.us/w/wholesale-portable-fan-mini.html?sortType=total_tranpro_desc' },
+  { slug: 'bathroom-organizer',name: 'Bathroom Organizers', url: 'https://www.aliexpress.us/w/wholesale-bathroom-organizer.html?sortType=total_tranpro_desc' },
   { slug: 'pet-grooming',      name: 'Pet Grooming',        url: 'https://www.aliexpress.us/w/wholesale-pet-grooming-tool.html?sortType=total_tranpro_desc' },
-  { slug: 'posture-corrector', name: 'Posture & Wellness',  url: 'https://www.aliexpress.us/w/wholesale-posture-corrector.html?sortType=total_tranpro_desc' },
+  { slug: 'pet-toy',           name: 'Pet Toys',            url: 'https://www.aliexpress.us/w/wholesale-pet-toy-interactive.html?sortType=total_tranpro_desc' },
   { slug: 'led-lights',        name: 'LED Lights',          url: 'https://www.aliexpress.us/w/wholesale-LED-strip-lights.html?sortType=total_tranpro_desc' },
-  { slug: 'water-bottle',      name: 'Water Bottles',       url: 'https://www.aliexpress.us/w/wholesale-reusable-water-bottle.html?sortType=total_tranpro_desc' },
+  { slug: 'desk-lamp',         name: 'Desk Lamps',          url: 'https://www.aliexpress.us/w/wholesale-desk-lamp-LED.html?sortType=total_tranpro_desc' },
   { slug: 'cable-organizer',   name: 'Cable Management',    url: 'https://www.aliexpress.us/w/wholesale-cable-organizer.html?sortType=total_tranpro_desc' },
   { slug: 'phone-tripod',      name: 'Phone Accessories',   url: 'https://www.aliexpress.us/w/wholesale-phone-tripod-stand.html?sortType=total_tranpro_desc' },
+  { slug: 'ring-light',        name: 'Ring Lights',         url: 'https://www.aliexpress.us/w/wholesale-ring-light.html?sortType=total_tranpro_desc' },
+  { slug: 'resistance-bands',  name: 'Fitness Equipment',   url: 'https://www.aliexpress.us/w/wholesale-workout-resistance-bands.html?sortType=total_tranpro_desc' },
+  { slug: 'bamboo-products',   name: 'Bamboo Products',     url: 'https://www.aliexpress.us/w/wholesale-bamboo-products.html?sortType=total_tranpro_desc' },
+  { slug: 'garden-tool',       name: 'Garden Tools',        url: 'https://www.aliexpress.us/w/wholesale-garden-tool-set.html?sortType=total_tranpro_desc' },
+  { slug: 'laptop-stand',      name: 'Laptop Stands',       url: 'https://www.aliexpress.us/w/wholesale-laptop-stand-adjustable.html?sortType=total_tranpro_desc' },
+  { slug: 'travel-accessories',name: 'Travel Accessories',  url: 'https://www.aliexpress.us/w/wholesale-travel-accessories-kit.html?sortType=total_tranpro_desc' },
 ];
 
 // --- Helpers ---
