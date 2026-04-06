@@ -6,6 +6,7 @@ import AnimatedCounter from '@/components/AnimatedCounter';
 import ScoreRing from '@/components/ScoreRing';
 import ScoreDistribution from '@/components/ScoreDistribution';
 import TrendRadar from '@/components/TrendRadar';
+import ScrapeProgress from '@/components/ScrapeProgress';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -201,6 +202,8 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [triggerLoading, setTriggerLoading] = useState<string | null>(null);
+  const [scraping, setScraping] = useState<string[] | null>(null);
+  const [filter, setFilter] = useState<'all' | 'approved'>('all');
 
   useEffect(() => {
     Promise.all([
@@ -234,22 +237,25 @@ export default function LandingPage() {
     setActionLoading(null);
   }, []);
 
-  const handleTrigger = useCallback(async (name: string) => {
-    setTriggerLoading(name);
-    try {
-      await fetch('/api/scrapers/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scraper_name: name }),
-      });
-      // Update the scraper status
-      setScrapers((prev) =>
-        prev.map((s) => s.name === name ? { ...s, last_status: 'running' } : s)
-      );
-    } catch (e) {
-      console.error(e);
-    }
-    setTriggerLoading(null);
+  const refreshData = useCallback(() => {
+    Promise.all([
+      fetchWithFallback('/api/stats', DEMO_STATS),
+      fetchWithFallback(`/api/products?limit=30&status=${filter === 'approved' ? 'approved' : 'pending'}`, { products: DEMO_PRODUCTS }),
+      fetchWithFallback('/api/scrapers', { scrapers: DEMO_SCRAPERS }),
+    ]).then(([s, p, sc]) => {
+      setStats(s);
+      setProducts(p.products ?? DEMO_PRODUCTS);
+      setScrapers(sc.scrapers ?? DEMO_SCRAPERS);
+    }).catch(console.error);
+  }, [filter]);
+
+  const handleTrigger = useCallback((name: string) => {
+    const shortName = name.replace('scrape:', '');
+    setScraping([shortName]);
+  }, []);
+
+  const handleScanAll = useCallback(() => {
+    setScraping(['google-trends', 'amazon-trending', 'aliexpress', 'tiktok-shop']);
   }, []);
 
   return (
@@ -302,10 +308,42 @@ export default function LandingPage() {
       </section>
 
       {/* ============================================================ */}
+      {/* SCRAPE PROGRESS PANEL                                         */}
+      {/* ============================================================ */}
+      {scraping && (
+        <ScrapeProgress
+          scrapersToRun={scraping}
+          onComplete={() => refreshData()}
+          onDismiss={() => { setScraping(null); refreshData(); }}
+        />
+      )}
+
+      {/* ============================================================ */}
+      {/* SCAN ALL SOURCES BUTTON                                       */}
+      {/* ============================================================ */}
+      {!scraping && (
+        <section className="relative z-10 px-6 pt-8 max-w-7xl mx-auto">
+          <button
+            onClick={handleScanAll}
+            className="w-full sm:w-auto px-8 py-3 rounded-xl bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-sm font-semibold transition-all border border-emerald-500/20 hover:border-emerald-500/40 flex items-center justify-center gap-2"
+          >
+            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
+            Scan All Sources
+          </button>
+        </section>
+      )}
+
+      {/* ============================================================ */}
       {/* SECTION 2 — Live Feed                                         */}
       {/* ============================================================ */}
       <section className="relative z-10 px-6 py-20 max-w-7xl mx-auto">
-        <SectionTitle live>Top opportunities</SectionTitle>
+        <div className="flex items-center justify-between mb-6">
+          <SectionTitle live>Top {filter === 'approved' ? 'approved' : 'opportunities'}</SectionTitle>
+          <div className="flex gap-2">
+            <button onClick={() => { setFilter('all'); refreshData(); }} className={`px-3 py-1 rounded-md text-xs font-mono ${filter === 'all' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}>Pending</button>
+            <button onClick={() => { setFilter('approved'); refreshData(); }} className={`px-3 py-1 rounded-md text-xs font-mono ${filter === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}>Approved</button>
+          </div>
+        </div>
 
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -525,10 +563,10 @@ export default function LandingPage() {
 
                     <button
                       onClick={() => handleTrigger(s.name)}
-                      disabled={triggerLoading === s.name}
+                      disabled={!!scraping}
                       className="w-full py-2 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-xs font-mono font-medium transition-all disabled:opacity-50 border border-emerald-500/15 hover:border-emerald-500/30"
                     >
-                      {triggerLoading === s.name ? 'Triggering...' : 'Run now'}
+                      {scraping?.includes(s.name.replace('scrape:', '')) ? '⟳ Running...' : 'Run now'}
                     </button>
                   </div>
                 );
