@@ -138,18 +138,18 @@ function timeAgo(dateStr: string): string {
 }
 
 function sourceBadge(source: string) {
-  const map: Record<string, { label: string; color: string }> = {
-    aliexpress: { label: 'AliExpress', color: '#e44d26' },
-    amazon: { label: 'Amazon', color: '#ff9900' },
-    tiktok_shop: { label: 'TikTok', color: '#ff0050' },
-    temu: { label: 'Temu', color: '#fb7701' },
-    google_trends: { label: 'Google', color: '#4285f4' },
+  const map: Record<string, { label: string; bg: string; text: string }> = {
+    aliexpress: { label: 'AliExpress', bg: '#e44d2630', text: '#f97316' },
+    amazon: { label: 'Amazon', bg: '#ff990030', text: '#fbbf24' },
+    tiktok_shop: { label: 'TikTok', bg: '#ff005030', text: '#fb7185' },
+    temu: { label: 'Temu', bg: '#fb770130', text: '#fb923c' },
+    google_trends: { label: 'Google', bg: '#4285f430', text: '#60a5fa' },
   };
-  const s = map[source] ?? { label: source, color: '#888' };
+  const s = map[source] ?? { label: source, bg: '#88888830', text: '#a1a1aa' };
   return (
     <span
       className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider"
-      style={{ backgroundColor: s.color + '20', color: s.color }}
+      style={{ backgroundColor: s.bg, color: s.text }}
     >
       {s.label}
     </span>
@@ -222,17 +222,28 @@ export default function LandingPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleAction = useCallback(async (id: string, status: 'approved' | 'rejected') => {
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  const handleAction = useCallback(async (id: string, action: 'approved' | 'rejected') => {
     setActionLoading(id);
     try {
-      await fetch(`/api/products/${id}`, {
+      const res = await fetch(`/api/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: action }),
       });
-      setProducts((prev) => prev.filter((p) => p.id !== id));
+      if (res.ok) {
+        setProducts((prev) => prev.filter((p) => p.id !== id));
+        setToast({ msg: action === 'approved' ? 'Product approved — added to action queue' : 'Product skipped', type: 'success' });
+        setTimeout(() => setToast(null), 3000);
+      } else {
+        setToast({ msg: 'Failed to update product', type: 'error' });
+        setTimeout(() => setToast(null), 3000);
+      }
     } catch (e) {
       console.error(e);
+      setToast({ msg: 'Network error', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
     }
     setActionLoading(null);
   }, []);
@@ -261,6 +272,15 @@ export default function LandingPage() {
   return (
     <div className="relative min-h-screen">
       <NeuralNetwork />
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur text-sm font-medium animate-fade-in-up ${
+          toast.type === 'success' ? 'bg-emerald-900/80 border-emerald-500/30 text-emerald-300' : 'bg-red-900/80 border-red-500/30 text-red-300'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/* SECTION 1 — Hero                                              */}
@@ -325,7 +345,7 @@ export default function LandingPage() {
         <section className="relative z-10 px-6 pt-8 max-w-7xl mx-auto">
           <button
             onClick={handleScanAll}
-            className="w-full sm:w-auto px-8 py-3 rounded-xl bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-sm font-semibold transition-all border border-emerald-500/20 hover:border-emerald-500/40 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-8 py-3 rounded-xl bg-emerald-600/20 text-emerald-300 hover:bg-emerald-500/30 text-sm font-semibold transition-all border border-emerald-500/30 hover:border-emerald-400/50 flex items-center justify-center gap-2"
           >
             <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
             Scan All Sources
@@ -340,8 +360,8 @@ export default function LandingPage() {
         <div className="flex items-center justify-between mb-6">
           <SectionTitle live>Top {filter === 'approved' ? 'approved' : 'opportunities'}</SectionTitle>
           <div className="flex gap-2">
-            <button onClick={() => { setFilter('all'); refreshData(); }} className={`px-3 py-1 rounded-md text-xs font-mono ${filter === 'all' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}>Pending</button>
-            <button onClick={() => { setFilter('approved'); refreshData(); }} className={`px-3 py-1 rounded-md text-xs font-mono ${filter === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}>Approved</button>
+            <button onClick={() => { setFilter('all'); refreshData(); }} className={`px-3 py-1 rounded-md text-xs font-mono ${filter === 'all' ? 'bg-emerald-600/25 text-emerald-300 border border-emerald-500/40' : 'text-zinc-400 hover:text-zinc-200'}`}>Pending</button>
+            <button onClick={() => { setFilter('approved'); refreshData(); }} className={`px-3 py-1 rounded-md text-xs font-mono ${filter === 'approved' ? 'bg-emerald-600/25 text-emerald-300 border border-emerald-500/40' : 'text-zinc-400 hover:text-zinc-200'}`}>Approved</button>
           </div>
         </div>
 
@@ -443,8 +463,8 @@ export default function LandingPage() {
 
                   {/* Strategy line */}
                   {p.fulfillment_strategy && (
-                    <p className="text-[9px] text-cyan-500/60 font-mono mb-2 line-clamp-2">
-                      {p.fulfillment_strategy}
+                    <p className="text-[9px] text-zinc-500 font-mono mb-2 line-clamp-2">
+                      <span className="text-cyan-500/80">Strategy:</span> {p.fulfillment_strategy}
                     </p>
                   )}
 
