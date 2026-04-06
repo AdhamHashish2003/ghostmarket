@@ -74,16 +74,24 @@ async function screenshotOnError(page: Page, label: string): Promise<void> {
 
 async function isCaptchaPage(page: Page): Promise<boolean> {
   const indicators = await page.evaluate(() => {
-    const body = document.body?.textContent?.toLowerCase() ?? '';
-    const hasCaptchaText =
-      body.includes('enter the characters you see below') ||
-      body.includes('type the characters') ||
-      body.includes('sorry, we just need to make sure') ||
-      body.includes('robot');
+    // Check for CAPTCHA form elements (most reliable signal)
     const hasCaptchaForm =
       !!document.querySelector('form[action*="validateCaptcha"]') ||
-      !!document.querySelector('#captchacharacters');
-    return hasCaptchaText || hasCaptchaForm;
+      !!document.querySelector('#captchacharacters') ||
+      !!document.querySelector('input[name="field-keywords"][placeholder*="characters"]');
+
+    // Only check page title / h4 text — NOT full body text (too many false positives from product names containing "robot")
+    const title = document.title?.toLowerCase() ?? '';
+    const headings = Array.from(document.querySelectorAll('h4, p.a-last')).map(el => el.textContent?.toLowerCase() ?? '');
+    const headerText = headings.join(' ');
+
+    const hasCaptchaText =
+      title.includes('robot check') ||
+      headerText.includes('enter the characters you see below') ||
+      headerText.includes('type the characters') ||
+      headerText.includes('sorry, we just need to make sure you\'re not a robot');
+
+    return hasCaptchaForm || hasCaptchaText;
   });
   return indicators;
 }
@@ -92,12 +100,15 @@ async function isCaptchaPage(page: Page): Promise<boolean> {
 
 async function navigateSafely(page: Page, url: string): Promise<'ok' | 'captcha' | 'failed'> {
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ url, err: msg }, 'Amazon navigation failed');
     return 'failed';
   }
+
+  // Wait for JS rendering after initial load
+  await page.waitForTimeout(3000);
 
   if (await isCaptchaPage(page)) {
     logger.warn({ url }, 'CAPTCHA detected — waiting 30s and retrying once');
@@ -105,7 +116,7 @@ async function navigateSafely(page: Page, url: string): Promise<'ok' | 'captcha'
     await page.waitForTimeout(30_000);
 
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     } catch {
       return 'failed';
     }
@@ -186,9 +197,10 @@ function stripRefTag(url: string): string {
 
 function estimateMonthlySales(rank: number): number {
   if (rank <= 0) return 0;
-  if (rank <= 10) return 10_000;
-  if (rank <= 50) return Math.round(10_000 - ((rank - 10) / 40) * 7_000); // 10000 → 3000
-  if (rank <= 100) return Math.round(3_000 - ((rank - 50) / 50) * 2_000); // 3000 → 1000
+  if (rank <= 10) return 15_000;
+  if (rank <= 25) return 8_000;
+  if (rank <= 50) return 4_000;
+  if (rank <= 100) return 1_500;
   return Math.max(100, Math.round(1000 / Math.log10(rank)));
 }
 
@@ -212,85 +224,111 @@ interface AmazonExtract {
   rankChange: string;
 }
 
-const CARD_SELECTORS = [
-  '[data-testid="grid-asin-group"]',
-  '.zg-grid-general-faceout',
-  '.p13n-sc-uncoverable-faceout',
-  '#gridItemRoot',
-  '.a-carousel-card',
-  '[data-asin]',
-];
+const GRID_WAIT_SELECTOR = '[data-testid="grid-asin-group"], .zg-grid-general-faceout, .p13n-sc-uncoverable-faceout, #gridItemRoot, [data-asin], .a-carousel-card';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Extraction script run inside the browser via page.evaluate().
+// IMPORTANT: Must be a plain string — tsx/esbuild __name decorators break
+// function declarations inside evaluate(). We use eval() with a raw string
+// to bypass the transformer entirely.
+const EXTRACT_SCRIPT = `(() => {
+  function extractFromCards(cards) {
+    return cards.map(function(card, idx) {
+      var titleEl = card.querySelector(
+        '.p13n-sc-truncate, ._cDEzb_p13n-sc-css-line-clamp-3_g3dy1, ._cDEzb_p13n-sc-css-line-clamp-1_1Fn1y, [class*="truncate"], .a-link-normal span, a.a-link-normal[href*="/dp/"] span'
+      );
+      var title = titleEl ? titleEl.textContent.trim() : '';
+      var priceEl = card.querySelector(
+        '.p13n-sc-price, ._cDEzb_p13n-sc-price_3mJ9Z, .a-price .a-offscreen, span.a-price span'
+      );
+      var price = priceEl ? priceEl.textContent.trim() : '';
+      var ratingEl = card.querySelector('.a-icon-alt, [class*="a-icon-alt"], span[class*="star"]');
+      var rating = ratingEl ? ratingEl.textContent.trim() : '';
+      var reviewEl = card.querySelector('.a-size-small .a-link-normal, .a-size-small span:last-child, span[class*="a-size-small"]');
+      var reviewCount = reviewEl ? reviewEl.textContent.trim() : '';
+      var linkEl = card.querySelector('a.a-link-normal[href*="/dp/"], a[href*="/dp/"]');
+      var href = linkEl ? linkEl.getAttribute('href') || '' : '';
+      var productUrl = href.startsWith('http') ? href : href.startsWith('/') ? 'https://www.amazon.com' + href : '';
+      var imgEl = card.querySelector('img');
+      var imageUrl = imgEl ? imgEl.getAttribute('src') || '' : '';
+      var rankEl = card.querySelector('.zg-badge-text, [class*="zg-badge-text"], .p13n-sc-shoveler-rank');
+      var rankText = rankEl ? rankEl.textContent.trim() : '';
+      var rankMatch = rankText.replace(/[#,]/g, '').match(/(\\d+)/);
+      var rank = rankMatch ? parseInt(rankMatch[1], 10) : idx + 1;
+      var changeEl = card.querySelector('.zg-percent-change, [class*="percent-change"], [class*="salesRank"]');
+      var rankChange = changeEl ? changeEl.textContent.trim() : '';
+      return { title: title, price: price, rating: rating, reviewCount: reviewCount, productUrl: productUrl, imageUrl: imageUrl, rank: rank, rankChange: rankChange };
+    });
+  }
+
+  var strategyASelectors = ['[data-testid="grid-asin-group"]', '.zg-grid-general-faceout', '.p13n-sc-uncoverable-faceout', '#gridItemRoot', '[data-asin]'];
+  var stratA = [];
+  for (var i = 0; i < strategyASelectors.length; i++) {
+    var found = document.querySelectorAll(strategyASelectors[i]);
+    if (found.length > 0) { stratA = extractFromCards(Array.from(found)); break; }
+  }
+
+  var strategyBSelectors = ['.a-carousel-card', '.a-list-item', '.s-result-item', 'li[class*="zg"]'];
+  var stratB = [];
+  for (var j = 0; j < strategyBSelectors.length; j++) {
+    var foundB = document.querySelectorAll(strategyBSelectors[j]);
+    if (foundB.length > 3) { stratB = extractFromCards(Array.from(foundB)); break; }
+  }
+
+  var allDpLinks = document.querySelectorAll('a[href*="/dp/"]');
+  var seenAsins = {};
+  var stratC = [];
+  allDpLinks.forEach(function(link, idx) {
+    var href = link.getAttribute('href') || '';
+    var asinMatch = href.match(/\\/dp\\/([A-Z0-9]{10})/i);
+    if (!asinMatch || seenAsins[asinMatch[1]]) return;
+    seenAsins[asinMatch[1]] = true;
+    var card = link;
+    for (var k = 0; k < 6; k++) { if (card.parentElement) card = card.parentElement; }
+    var title = link.textContent.trim() || (card.querySelector('span') ? card.querySelector('span').textContent.trim() : '');
+    var priceEl = card.querySelector('.a-price .a-offscreen, .p13n-sc-price, span.a-price span');
+    var price = priceEl ? priceEl.textContent.trim() : '';
+    var imgEl = card.querySelector('img');
+    var imageUrl = imgEl ? imgEl.getAttribute('src') || '' : '';
+    var productUrl = href.startsWith('http') ? href : 'https://www.amazon.com' + href;
+    stratC.push({ title: title, price: price, rating: '', reviewCount: '', productUrl: productUrl, imageUrl: imageUrl, rank: idx + 1, rankChange: '' });
+  });
+
+  // Filter: must have a real title (not just "#1" rank badges) and a product URL
+  var isRealTitle = function(t) { return t && t.length > 3 && !/^#\\d+$/.test(t); };
+  var aWithTitle = stratA.filter(function(p) { return isRealTitle(p.title) && p.productUrl; });
+  var bWithTitle = stratB.filter(function(p) { return isRealTitle(p.title) && p.productUrl; });
+  var cWithTitle = stratC.filter(function(p) { return isRealTitle(p.title) && p.productUrl; });
+
+  // Prefer Strategy A (specific selectors = better quality), then B, then C as fallback
+  var products, winner;
+  if (aWithTitle.length > 0) {
+    products = aWithTitle; winner = 'A';
+  } else if (bWithTitle.length > 0) {
+    products = bWithTitle; winner = 'B';
+  } else {
+    products = cWithTitle; winner = 'C';
+  }
+
+  return { stratA: aWithTitle.length, stratB: bWithTitle.length, stratC: cWithTitle.length, products: products, winner: winner };
+})()`;
 
 async function extractAmazonProducts(page: Page): Promise<AmazonExtract[]> {
-  return page.evaluate((selectors: string[]) => {
-    let cards: Element[] = [];
-    for (const sel of selectors) {
-      const found = document.querySelectorAll(sel);
-      if (found.length > 0) {
-        cards = Array.from(found);
-        break;
-      }
-    }
+  let results: any;
+  try {
+    results = await page.evaluate(EXTRACT_SCRIPT);
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Extraction evaluate failed');
+    await screenshotOnError(page, 'extract-error');
+    return [];
+  }
 
-    if (cards.length === 0) return [];
+  logger.info(
+    { stratA: results.stratA, stratB: results.stratB, stratC: results.stratC, winner: results.winner, total: results.products.length },
+    'Extraction strategy results',
+  );
 
-    return cards.map((card, idx) => {
-      // Title
-      const titleEl = card.querySelector(
-        '.p13n-sc-truncate, [class*="p13n-sc-truncate"], .a-link-normal span, ._cDEzb_p13n-sc-css-line-clamp-1_1Fn1y, a.a-link-normal[href*="/dp/"] span',
-      );
-      const title = titleEl?.textContent?.trim() ?? '';
-
-      // Price
-      const priceEl = card.querySelector(
-        '.p13n-sc-price, ._cDEzb_p13n-sc-price_3mJ9Z, .a-price .a-offscreen, span.a-price span',
-      );
-      const price = priceEl?.textContent?.trim() ?? '';
-
-      // Rating text (e.g. "4.5 out of 5 stars")
-      const ratingEl = card.querySelector(
-        '.a-icon-alt, [class*="a-icon-alt"], span[class*="star"]',
-      );
-      const rating = ratingEl?.textContent?.trim() ?? '';
-
-      // Review count
-      const reviewEl = card.querySelector(
-        '.a-size-small span:last-child, span[class*="a-size-small"]',
-      );
-      const reviewCount = reviewEl?.textContent?.trim() ?? '';
-
-      // Product link
-      const linkEl = card.querySelector(
-        'a.a-link-normal[href*="/dp/"], a[href*="/dp/"]',
-      );
-      const href = linkEl?.getAttribute('href') ?? '';
-      const productUrl = href.startsWith('http')
-        ? href
-        : href.startsWith('/')
-          ? `https://www.amazon.com${href}`
-          : '';
-
-      // Image
-      const imgEl = card.querySelector('img');
-      const imageUrl = imgEl?.getAttribute('src') ?? '';
-
-      // Rank — either from a badge or from position
-      const rankEl = card.querySelector(
-        '.zg-badge-text, [class*="zg-badge-text"], .p13n-sc-shoveler-rank',
-      );
-      const rankText = rankEl?.textContent?.trim() ?? '';
-      const rankMatch = rankText.replace(/[#,]/g, '').match(/(\d+)/);
-      const rank = rankMatch ? parseInt(rankMatch[1], 10) : idx + 1;
-
-      // Rank change (Movers & Shakers pages)
-      const changeEl = card.querySelector(
-        '.zg-percent-change, [class*="percent-change"], [class*="salesRank"]',
-      );
-      const rankChange = changeEl?.textContent?.trim() ?? '';
-
-      return { title, price, rating, reviewCount, productUrl, imageUrl, rank, rankChange };
-    });
-  }, CARD_SELECTORS);
+  return results.products;
 }
 
 // --- Pagination ---
@@ -353,19 +391,44 @@ export async function scrapeAmazonTrending(
   let browser: Browser | null = null;
 
   try {
+    const isHeaded = process.env.SCRAPER_HEADED === 'true';
     browser = await chromium.launch({
-      headless: true,
+      headless: !isHeaded,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
+    const ua = randomUA();
     const context = await browser.newContext({
-      userAgent: randomUA(),
+      userAgent: ua,
       viewport: { width: 1920, height: 1080 },
       locale: 'en-US',
+      timezoneId: 'America/New_York',
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+      },
     });
 
     const page = await context.newPage();
-    page.setDefaultTimeout(30_000);
+    page.setDefaultTimeout(45_000);
+
+    // Warm up session: visit Amazon homepage first to get cookies
+    logger.info({ batchId }, 'Warming up Amazon session with homepage visit');
+    try {
+      await page.goto(`${BASE_URL}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.waitForTimeout(3000);
+      await dismissPopups(page);
+      await randomDelay(2000, 4000);
+    } catch (err) {
+      logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Homepage warmup failed — continuing');
+    }
 
     for (const target of targets) {
       logger.info(
@@ -387,7 +450,7 @@ export async function scrapeAmazonTrending(
       // Wait for product grid to appear
       try {
         await page.waitForSelector(
-          CARD_SELECTORS.join(', '),
+          GRID_WAIT_SELECTOR,
           { state: 'attached', timeout: 10_000 },
         );
       } catch {
@@ -403,10 +466,10 @@ export async function scrapeAmazonTrending(
           'Extracting products from page',
         );
 
-        // Scroll to load lazy images
+        // Scroll slowly to load lazy images (600px every 1s, 10 times)
         for (let i = 0; i < 10; i++) {
           await page.evaluate(() => window.scrollBy(0, 600));
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(1000);
         }
 
         const extracts = await extractAmazonProducts(page);
@@ -500,7 +563,7 @@ export async function scrapeAmazonTrending(
           break;
         }
 
-        await randomDelay(5000, 10_000);
+        await randomDelay(5000, 12_000);
       }
 
       logger.info(
@@ -509,7 +572,7 @@ export async function scrapeAmazonTrending(
       );
 
       // Delay between targets
-      await randomDelay(5000, 10_000);
+      await randomDelay(5000, 12_000);
     }
 
     await context.close();
