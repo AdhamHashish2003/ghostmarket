@@ -1,8 +1,7 @@
 FROM node:20-slim
 
 # Install Playwright + Chromium for browser-based scrapers
-# This is a large install (~400MB) — skip if deploying trends-only
-RUN npx playwright install --with-deps chromium || echo "Playwright install skipped"
+RUN npx playwright install --with-deps chromium || echo "Playwright optional"
 
 WORKDIR /app
 
@@ -11,16 +10,16 @@ COPY packages/shared/package*.json ./packages/shared/
 COPY packages/scrapers/package*.json ./packages/scrapers/
 COPY packages/scoring/package*.json ./packages/scoring/
 
-RUN npm install --workspace=packages/shared --workspace=packages/scrapers --workspace=packages/scoring
+RUN npm install
 
+COPY tsconfig.base.json ./
 COPY packages/shared/ ./packages/shared/
 COPY packages/scrapers/ ./packages/scrapers/
 COPY packages/scoring/ ./packages/scoring/
-COPY scripts/ ./scripts/
 
-RUN npm run build --workspace=packages/shared && npm run build --workspace=packages/scoring
+# Build shared + scoring (needed for dist/ imports)
+RUN cd packages/shared && npx tsc --skipLibCheck && cd ../scoring && npx tsc --skipLibCheck
 
 EXPOSE 3007
 WORKDIR /app/packages/scrapers
-# Railway sets PORT at runtime — map it to PORT_API for the scraper fleet
 CMD ["sh", "-c", "PORT_API=${PORT:-3007} exec npx tsx src/index.ts"]

@@ -1,0 +1,14 @@
+data/
+backtest/data/raw/
+backtest/data/features.csv
+backtest/data/training_pairs.jsonl
+backtest/data/holdout_pairs.jsonl
+models/training_data/
+src/models/xgboost_scorer.pkl
+src/dashboard/
+src/agents/
+.next/
+node_modules/
+*.db
+*.db-shm
+*.db-wal
