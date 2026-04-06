@@ -6,8 +6,8 @@ console.log(`\nStarting Amazon scraper test (batch: ${batchId})\n`);
 console.log('Browser will open — watch it scrape!\n');
 
 const result = await scrapeAmazonTrending(batchId, {
-  max_pages: 1,
-  categories: ['overall', 'electronics', 'home'],
+  max_pages: 2,
+  categories: ['electronics', 'home'],
 });
 
 console.log(`\nDone! Products found: ${result.productsFound}`);
