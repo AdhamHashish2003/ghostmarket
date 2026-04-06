@@ -11,6 +11,14 @@ const STOPWORDS = new Set([
   'this', 'that', 'new', 'set', 'not', 'no', 'so', 'up', 'out', 'if',
   'do', 'has', 'had', 'its', 'my', 'all', 'can', 'get', 'got', 'one',
   'two', 'use', 'may', 'day', 'way', 'own', 'men', 'man', 'big', 'top',
+  'pro', 'best', 'kit', 'pack', 'piece', 'mini', 'max', 'ultra',
+  'plus', 'super', 'into', 'your', 'will', 'size', 'type', 'free',
+  'inch', 'made', 'home', 'work', 'high', 'full', 'real', 'original',
+  'digital', 'color', 'black', 'white', 'large', 'small', 'light',
+  'premium', 'heavy', 'duty', 'extra', 'easy', 'great', 'good',
+  'wireless', 'strip', 'roller', 'steel', 'stainless', 'travel',
+  'point', 'water', 'fine', 'clear', 'strong', 'long', 'wide',
+  'double', 'sided', 'proof', 'resistant', 'handle', 'design',
 ]);
 
 function extractSignificantWords(title: string): string[] {
@@ -18,7 +26,34 @@ function extractSignificantWords(title: string): string[] {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+}
+
+/** Count how many words from the product title appear as whole words in the trend keyword.
+ *  For multi-word trends (e.g. "portable fan"), require at least 50% of trend words to match.
+ *  Single-word trends (e.g. "fan") require an exact word match in the title. */
+function computeRelevanceScore(titleWords: string[], trendKeyword: string): number {
+  const trendWords = trendKeyword.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length >= 4);
+  if (trendWords.length === 0) return 0;
+
+  let matches = 0;
+  for (const kw of trendWords) {
+    for (const tw of titleWords) {
+      // Exact word match, or stem match for 5+ char words
+      if (tw === kw || (tw.length >= 5 && kw.length >= 5 && (kw.startsWith(tw) || tw.startsWith(kw)))) {
+        matches++;
+        break;
+      }
+    }
+  }
+
+  // For multi-word trends, require at least half the trend words to match
+  // "portable fan" (2 words) → need at least 1 match
+  // "digital picture frame" (3 words) → need at least 2 matches
+  const minRequired = Math.max(1, Math.ceil(trendWords.length * 0.5));
+  if (matches < minRequired) return 0;
+
+  return matches;
 }
 
 // --- Types for the row shape returned by drizzle ---
@@ -138,58 +173,77 @@ function computeMarginScore(product: RawProductRow): { score: number; marginPct:
   return { score, marginPct: Math.round(marginPct * 100) / 100 };
 }
 
-// --- 3. Trend Score (weight 0.25) ---
+// --- 3. Trend Score (weight 0.30) ---
 
 async function computeTrendScore(
   product: RawProductRow,
 ): Promise<{ score: number; trendKeywords: string[] }> {
-  const words = extractSignificantWords(product.title);
-  if (words.length === 0) return { score: 15, trendKeywords: [] };
+  const titleWords = extractSignificantWords(product.title);
+  if (titleWords.length === 0) return { score: 15, trendKeywords: [] };
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const trendKeywords: string[] = [];
-  let bestInterestScore = 0;
-  let bestVelocity = 0;
 
-  // Query trend_signals for each significant word
-  for (const word of words.slice(0, 8)) {
-    const trends = await db
-      .select({
-        keyword: trendSignals.keyword,
-        interest_score: trendSignals.interest_score,
-        velocity: trendSignals.velocity,
-      })
-      .from(trendSignals)
-      .where(
-        and(
-          ilike(trendSignals.keyword, `%${word}%`),
-          gte(trendSignals.captured_at, sevenDaysAgo),
-        ),
-      )
-      .orderBy(desc(trendSignals.interest_score))
-      .limit(3);
+  // Fetch ALL recent trend signals (deduplicated by keyword)
+  const allTrends = await db
+    .select({
+      keyword: trendSignals.keyword,
+      interest_score: trendSignals.interest_score,
+      velocity: trendSignals.velocity,
+    })
+    .from(trendSignals)
+    .where(gte(trendSignals.captured_at, sevenDaysAgo))
+    .orderBy(desc(trendSignals.interest_score));
 
-    for (const t of trends) {
-      if (t.interest_score > bestInterestScore) {
-        bestInterestScore = t.interest_score;
-        bestVelocity = parseFloat(t.velocity ?? '0');
-      }
-      if (!trendKeywords.includes(t.keyword)) {
-        trendKeywords.push(t.keyword);
-      }
+  // Deduplicate trends by keyword (keep highest interest score)
+  const seenKeywords = new Set<string>();
+  const uniqueTrends: typeof allTrends = [];
+  for (const t of allTrends) {
+    const k = t.keyword.toLowerCase();
+    if (!seenKeywords.has(k)) {
+      seenKeywords.add(k);
+      uniqueTrends.push(t);
     }
   }
 
-  if (trendKeywords.length === 0) {
+  // Score each trend by RELEVANCE to this product (word overlap), not just interest
+  const scoredTrends: { keyword: string; interest: number; velocity: number; relevance: number; combined: number }[] = [];
+
+  for (const trend of uniqueTrends) {
+    const relevance = computeRelevanceScore(titleWords, trend.keyword);
+    if (relevance === 0) continue; // No word-level match at all
+
+    const velocity = parseFloat(trend.velocity ?? '0');
+    // Combined score: relevance is king, interest is secondary
+    const combined = relevance * 100 + trend.interest_score + Math.min(velocity * 2, 20);
+
+    scoredTrends.push({
+      keyword: trend.keyword,
+      interest: trend.interest_score,
+      velocity,
+      relevance,
+      combined,
+    });
+  }
+
+  // Sort by combined relevance (not just interest score!)
+  scoredTrends.sort((a, b) => b.combined - a.combined);
+
+  if (scoredTrends.length === 0) {
     return { score: 15, trendKeywords: [] };
   }
 
-  // Apply velocity multiplier
-  let velocityMultiplier = 1.0;
-  if (bestVelocity > 5) velocityMultiplier = 1.5;
-  else if (bestVelocity > 2) velocityMultiplier = 1.2;
+  // Take top 3 most RELEVANT trends
+  const topTrends = scoredTrends.slice(0, 3);
+  const bestTrend = topTrends[0];
 
-  const score = Math.min(100, Math.round(bestInterestScore * velocityMultiplier));
+  // Score based on the best relevant trend
+  let velocityMultiplier = 1.0;
+  if (bestTrend.velocity > 5) velocityMultiplier = 1.5;
+  else if (bestTrend.velocity > 2) velocityMultiplier = 1.2;
+
+  const score = Math.min(100, Math.round(bestTrend.interest * velocityMultiplier));
+  const trendKeywords = topTrends.map(t => t.keyword);
+
   return { score, trendKeywords };
 }
 

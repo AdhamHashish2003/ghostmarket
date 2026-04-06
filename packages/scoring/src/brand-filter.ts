@@ -2,14 +2,31 @@ import { logger } from '@ghostmarket/shared';
 
 // Brands that small sellers cannot compete against
 const BLOCKED_BRANDS = [
-  'apple', 'samsung', 'sony', 'lg', 'nike', 'adidas', 'gucci', 'prada',
-  'louis vuitton', 'chanel', 'dyson', 'bose', 'jbl', 'canon', 'nikon',
-  'playstation', 'xbox', 'nintendo', 'google', 'microsoft', 'amazon basics',
+  // Tech giants
+  'apple', 'samsung', 'sony', 'lg', 'google', 'microsoft', 'amazon basics',
   'anker', 'dell', 'hp', 'lenovo', 'asus', 'acer', 'intel', 'amd', 'nvidia',
-  'tesla', 'bmw', 'mercedes', 'rolex', 'cartier', 'hermes', 'burberry',
-  'versace', 'dior', 'balenciaga', 'fendi', 'ipad', 'iphone', 'macbook',
-  'galaxy', 'pixel', 'kindle', 'echo', 'alexa', 'ring', 'nest',
-  'airpods', 'beats', 'gopro', 'fitbit', 'garmin', 'roku',
+  // Tech product names
+  'ipad', 'iphone', 'macbook', 'galaxy', 'pixel', 'kindle', 'echo', 'alexa',
+  'airpods', 'beats', 'gopro', 'fitbit', 'garmin', 'roku', 'nest',
+  // Audio / peripherals
+  'bose', 'jbl', 'canon', 'nikon', 'playstation', 'xbox', 'nintendo',
+  // Fashion / luxury
+  'nike', 'adidas', 'gucci', 'prada', 'louis vuitton', 'chanel', 'hermes',
+  'burberry', 'versace', 'dior', 'balenciaga', 'fendi', 'rolex', 'cartier',
+  // Auto / luxury
+  'tesla', 'bmw', 'mercedes', 'dyson',
+  // Kitchen / household big brands
+  'stanley', 'ninja', 'instant pot', 'kitchenaid', 'cuisinart',
+  'hamilton beach', 'keurig', 'black+decker', 'black & decker',
+  'rubbermaid', 'oxo', 'clorox', 'glad', 'ziploc',
+  // Pet / grocery big brands
+  'purina', 'arm & hammer', 'arm &amp; hammer',
+  // Personal care / CPG big brands
+  'energizer', 'duracell', 'oral-b', 'gillette', 'tide', 'bounty',
+  'charmin', 'pampers', 'mueller', 'fullstar',
+  // Other established brands
+  'ring', 'cosori', 'breville', 'vitamix', 'shark', 'irobot', 'roomba',
+  'weber', 'traeger', 'yeti', 'hydro flask', 'contigo', 'thermos',
 ];
 
 // Brand-adjacent accessories (dependent on brand ecosystem)
@@ -60,10 +77,19 @@ export function filterProduct(product: ProductInput): FilterResult {
 
   // --- REJECTION FILTERS ---
 
-  // 1. Blocked brands
+  // 1. Blocked brands — use word-boundary matching for short names to avoid false positives
+  //    e.g. "ring" should block "Ring Doorbell" but NOT "ring light" or "key ring"
   for (const brand of BLOCKED_BRANDS) {
-    if (title.includes(brand)) {
-      return { allowed: false, reason: `Blocked brand: ${brand}`, opportunityBonus: 0 };
+    if (brand.length <= 4) {
+      // Short brand names: require word boundary (start of title or preceded by space)
+      const re = new RegExp(`(^|\\s)${brand.replace(/[+&]/g, '\\$&')}(\\s|$|\\b)`, 'i');
+      if (re.test(product.title)) {
+        return { allowed: false, reason: `Blocked brand: ${brand}`, opportunityBonus: 0 };
+      }
+    } else {
+      if (title.includes(brand)) {
+        return { allowed: false, reason: `Blocked brand: ${brand}`, opportunityBonus: 0 };
+      }
     }
   }
 
